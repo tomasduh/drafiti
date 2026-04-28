@@ -225,6 +225,7 @@ fileInput.addEventListener("change", e => { if (e.target.files[0]) uploadFile(e.
 let pendingFile = null;
 
 async function uploadFile(file, password = null) {
+  document.getElementById("upload-error").classList.add("hidden");
   show("loading");
   const form = new FormData();
   form.append("file", file);
@@ -235,12 +236,22 @@ async function uploadFile(file, password = null) {
     if (!res.ok) {
       const err = await res.json();
       if (err.detail === "password_required") {
-        pendingFile = file;
-        show("upload-section");
-        openPwdModal();
+        if (password) {
+          // Wrong password — reopen modal with error
+          pendingFile = file;
+          show("upload-section");
+          openPwdModal("Contraseña incorrecta, intenta de nuevo");
+        } else {
+          pendingFile = file;
+          show("upload-section");
+          openPwdModal();
+        }
         return;
       }
-      throw new Error(err.detail || "Error desconocido");
+      const msg = typeof err.detail === "string"
+        ? err.detail
+        : "No se pudo procesar el PDF. Verifica que el archivo sea válido.";
+      throw new Error(msg);
     }
     const data = await res.json();
     summary       = data.summary || {};
@@ -261,8 +272,11 @@ async function uploadFile(file, password = null) {
     activeFilter = "Todos";
     renderResults();
   } catch (e) {
-    alert("Error al procesar el PDF:\n" + e.message);
     show("upload-section");
+    const errEl = document.getElementById("upload-error");
+    errEl.textContent = e.message || "No se pudo procesar el PDF. Intenta de nuevo.";
+    errEl.classList.remove("hidden");
+    setTimeout(() => errEl.classList.add("hidden"), 6000);
   }
 }
 
@@ -912,10 +926,17 @@ function applyLearnedRules(txns) {
 }
 
 // ── Password modal ────────────────────────────────────────────────────────────
-function openPwdModal() {
+function openPwdModal(errorMsg = "") {
   document.getElementById("password-modal").classList.remove("hidden");
   const input = document.getElementById("pdf-password");
+  const errEl = document.getElementById("pwd-error");
   input.value = "";
+  if (errEl) {
+    errEl.textContent = errorMsg;
+    errEl.classList.toggle("hidden", !errorMsg);
+    if (errorMsg) input.classList.add("pwd-input-error");
+    else input.classList.remove("pwd-input-error");
+  }
   setTimeout(() => input.focus(), 80);
 }
 
@@ -927,8 +948,9 @@ function closePwdModal() {
 async function submitWithPassword() {
   const pwd = document.getElementById("pdf-password").value.trim();
   if (!pwd || !pendingFile) { closePwdModal(); return; }
+  const file = pendingFile;  // save before closePwdModal clears it
   closePwdModal();
-  await uploadFile(pendingFile, pwd);
+  await uploadFile(file, pwd);
 }
 
 // ── Reset ─────────────────────────────────────────────────────────────────────

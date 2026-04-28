@@ -69,6 +69,7 @@
           <button class="btn-primary" id="select-file-btn">
             Seleccionar PDF
           </button>
+          <div id="upload-error" class="upload-error hidden"></div>
         </div>
       </div>
       <div class="features-row">
@@ -312,6 +313,7 @@
         placeholder="Contraseña del PDF"
         onkeydown="if(event.key==='Enter') submitWithPassword()" />
     </div>
+    <div id="pwd-error" class="pwd-error hidden"></div>
     <div class="pwd-modal-actions">
       <button class="btn-cancel" onclick="closePwdModal()">Cancelar</button>
       <button class="btn-open" onclick="submitWithPassword()">
