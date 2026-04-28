@@ -680,6 +680,61 @@ td.avatar-cell { width: 52px; }
   font-size: 13px; cursor: pointer; font-weight: 500; white-space: nowrap;
 }
 
+/* ── Header right (user menu) ───────────────────── */
+.header-right { display: flex; align-items: center; gap: 10px; }
+.user-menu    { display: flex; align-items: center; gap: 8px; }
+.user-name    { font-size: 13px; font-weight: 600; color: var(--text); }
+
+/* ── Admin panel ─────────────────────────────────── */
+.admin-box { max-width: 500px; width: 100%; }
+
+.admin-form {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.admin-input {
+  flex: 1; min-width: 120px;
+  padding: 8px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); font-size: 13px;
+  background: var(--bg); color: var(--text);
+  outline: none;
+}
+.admin-input:focus { border-color: var(--primary); }
+.admin-check-label {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 13px; color: var(--muted); cursor: pointer;
+}
+
+.admin-error {
+  background: #FEE2E2; color: #DC2626;
+  border-radius: var(--radius-sm);
+  padding: 8px 12px; font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.admin-user-list {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 320px; overflow-y: auto;
+  margin-top: 12px;
+}
+.admin-user-row {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--bg); border-radius: var(--radius-sm);
+  padding: 10px 14px;
+}
+.admin-user-info {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.admin-user-name  { font-weight: 600; font-size: 13px; }
+.admin-user-email { font-size: 12px; color: var(--muted); }
+.admin-badge {
+  background: var(--primary-light); color: var(--primary);
+  font-size: 11px; font-weight: 700; padding: 2px 7px;
+  border-radius: 99px;
+}
+.admin-google  { font-size: 11px; color: #059669; font-weight: 600; }
+.admin-pending { font-size: 11px; color: var(--muted); }
+
 /* ── Utils ─────────────────────────────────────── */
 .hidden { display: none !important; }
 

@@ -26,12 +26,25 @@
     </button>
   </nav>
 
-  <div id="header-info" class="header-info hidden">
-    <span id="txn-count" class="txn-pill"></span>
-    <button class="btn-ghost" onclick="resetApp()">
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7a5 5 0 1010 0 5 5 0 00-10 0zM7 4v3M7 7l2 2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-      Nuevo PDF
-    </button>
+  <div class="header-right">
+    <div id="header-info" class="header-info hidden">
+      <span id="txn-count" class="txn-pill"></span>
+      <button class="btn-ghost" onclick="resetApp()">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7a5 5 0 1010 0 5 5 0 00-10 0zM7 4v3M7 7l2 2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Nuevo PDF
+      </button>
+    </div>
+    <div class="user-menu">
+      <button class="btn-ghost hidden" id="admin-btn" onclick="openAdminPanel()">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="5" r="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M1 12c0-2.5 2.46-4.5 5.5-4.5S12 9.5 12 12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        Usuarios
+      </button>
+      <span id="user-name" class="user-name"></span>
+      <button class="btn-ghost" onclick="logout()">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M5 2H2a1 1 0 00-1 1v7a1 1 0 001 1h3M9 9l3-2.5L9 4M5 6.5h7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Salir
+      </button>
+    </div>
   </div>
 </header>
 
@@ -249,6 +262,29 @@
       <button class="btn-cancel" onclick="cancelConfirm()">Cancelar</button>
       <button class="btn-danger" id="confirm-ok">Eliminar</button>
     </div>
+  </div>
+</div>
+
+<!-- Admin panel modal -->
+<div id="admin-modal" class="modal-overlay hidden" onclick="closeAdminPanel(event)">
+  <div class="modal-box admin-box">
+    <div class="modal-header">
+      <span class="modal-title">Gestión de usuarios</span>
+      <button class="modal-close" onclick="closeAdminPanel()">✕</button>
+    </div>
+
+    <div class="admin-form">
+      <input id="admin-username" type="text" placeholder="Username" class="admin-input" />
+      <input id="admin-email"    type="email" placeholder="Email" class="admin-input" />
+      <label class="admin-check-label">
+        <input type="checkbox" id="admin-is-admin" />
+        Admin
+      </label>
+      <button class="btn-confirm" onclick="adminCreateUser()">Agregar</button>
+    </div>
+    <div id="admin-error" class="admin-error hidden"></div>
+
+    <div id="admin-user-list" class="admin-user-list"></div>
   </div>
 </div>
 

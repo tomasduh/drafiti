@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drafiti — Acceder</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .login-wrap {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+    }
+    .login-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
+      padding: 48px 44px;
+      width: 100%;
+      max-width: 380px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+    .login-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .login-logo-mark {
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg, #5C6BC0, #7986CB);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 18px; font-weight: 700;
+    }
+    .login-logo-text {
+      font-size: 24px; font-weight: 700;
+      color: var(--primary); letter-spacing: -0.5px;
+    }
+    .login-title {
+      font-size: 15px; color: var(--muted);
+      text-align: center; line-height: 1.5;
+    }
+    .btn-google {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      width: 100%; padding: 13px 20px;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 14px; font-weight: 600; color: var(--text);
+      cursor: pointer; text-decoration: none;
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+    .btn-google:hover {
+      background: var(--bg);
+      box-shadow: var(--shadow-sm);
+    }
+    .btn-google svg { flex-shrink: 0; }
+    .login-error {
+      background: #FEE2E2; color: #DC2626;
+      border-radius: var(--radius-sm);
+      padding: 10px 16px; font-size: 13px;
+      text-align: center; width: 100%;
+    }
+    .login-error.hidden { display: none; }
+    .login-footer {
+      font-size: 12px; color: var(--muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="login-logo-mark">✦</div>
+        <span class="login-logo-text">drafiti</span>
+      </div>
+
+      <p class="login-title">Analizá tus gastos con tarjeta.<br>Iniciá sesión para continuar.</p>
+
+      <div class="login-error hidden" id="login-error"></div>
+
+      <a class="btn-google" href="/auth/login">
+        <svg width="18" height="18" viewBox="0 0 18 18">
+          <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+          <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z"/>
+          <path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/>
+          <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
+        </svg>
+        Continuar con Google
+      </a>
+
+      <p class="login-footer">Solo usuarios autorizados pueden acceder.</p>
+    </div>
+  </div>
+
+  <script>
+    // If already logged in, go straight to the app
+    fetch('/api/me').then(r => { if (r.ok) window.location.href = '/'; });
+
+    // Show error messages from query string
+    const params = new URLSearchParams(location.search);
+    const err = params.get('error');
+    if (err) {
+      const el = document.getElementById('login-error');
+      el.classList.remove('hidden');
+      el.textContent = err === 'not_registered'
+        ? 'Tu cuenta de Google no está registrada. Contactá al administrador.'
+        : 'Error al iniciar sesión con Google. Intentá de nuevo.';
+    }
+  </script>
+</body>
+</html>

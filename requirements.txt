@@ -2,3 +2,8 @@ fastapi
 uvicorn[standard]
 pdfplumber
 python-multipart
+sqlalchemy[asyncio]
+asyncpg
+aiosqlite
+httpx
+PyJWT

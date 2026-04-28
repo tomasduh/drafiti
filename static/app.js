@@ -27,7 +27,7 @@ const COLOR_PALETTE = [
 ];
 
 let selectedColorIdx = 0;
-let selectedEmoji = "🏷️";
+let selectedEmoji    = "🏷️";
 
 const EMOJI_OPTIONS = [
   "🏷️","🍔","🍕","🍜","🍣","🥗","☕","🍺","🥤","🍦",
@@ -37,24 +37,32 @@ const EMOJI_OPTIONS = [
   "🌮","🧴","🧹","🌿","🏥","🎲","🏊","🎰","👗","🛠️",
 ];
 
+// ── App-level caches (loaded from API on init) ───────────────────────────────
+let currentUser      = null;
+let customCats       = [];   // [{name,icon,bg,text,custom:true}]
+let learnedRulesCache = {};  // {DESCRIPTION_KEY: [cats]}
+let historyCache     = [];   // [{id,filename,fecha_corte,uploadedAt,total,summary,transactions}]
+
+// ── Categories ────────────────────────────────────────────────────────────────
 function loadCategories() {
-  const custom = JSON.parse(localStorage.getItem("drafiti_cats") || "[]");
-  return [...BUILTIN, ...custom];
+  return [...BUILTIN, ...customCats];
 }
 
 function saveCustomCategory(name, icon) {
-  const custom = JSON.parse(localStorage.getItem("drafiti_cats") || "[]");
-  if (custom.find(c => c.name === name) || BUILTIN.find(c => c.name === name)) return;
+  if (customCats.find(c => c.name === name) || BUILTIN.find(c => c.name === name)) return;
   const color = COLOR_PALETTE[selectedColorIdx];
-  custom.push({ name, icon, bg: color.bg, text: color.text, custom: true });
-  localStorage.setItem("drafiti_cats", JSON.stringify(custom));
+  const cat   = { name, icon, bg: color.bg, text: color.text, custom: true };
+  customCats.push(cat);
+  fetch("/api/categories", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, icon, bg: color.bg, text: color.text }),
+  });
 }
 
 function deleteCustomCategory(name) {
-  const custom = JSON.parse(localStorage.getItem("drafiti_cats") || "[]");
-  const filtered = custom.filter(c => c.name !== name);
-  localStorage.setItem("drafiti_cats", JSON.stringify(filtered));
-  // Remove from all transactions
+  customCats = customCats.filter(c => c.name !== name);
+  fetch(`/api/categories/${encodeURIComponent(name)}`, { method: "DELETE" });
   allTxns.forEach(t => {
     t.categories = t.categories.filter(c => c !== name);
     if (t.categories.length === 0) t.categories = ["Otros"];
@@ -62,60 +70,64 @@ function deleteCustomCategory(name) {
 }
 
 function getCat(name) {
-  return loadCategories().find(c => c.name === name) || { name, icon: "📦", bg: "#F3F4F6", text: "#374151" };
+  return loadCategories().find(c => c.name === name)
+    || { name, icon: "📦", bg: "#F3F4F6", text: "#374151" };
 }
 
-// ── History ──────────────────────────────────────────────────────────────────
-const HISTORY_KEY = "drafiti_history";
-
+// ── History (backed by API) ───────────────────────────────────────────────────
 function loadHistory() {
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }
-  catch { return []; }
+  return historyCache;
 }
 
 function saveToHistory(filename, data) {
-  const history = loadHistory();
-  const id = Date.now().toString();
+  const id    = Date.now().toString();
   const total = data.transactions
     .filter(t => t.amount > 0)
     .reduce((s, t) => s + ((t.cargos_mes != null) ? t.cargos_mes : t.amount), 0);
-  history.unshift({
+  const entry = {
     id,
     filename,
-    uploadedAt: new Date().toLocaleDateString("es-CO"),
+    uploadedAt:  new Date().toLocaleDateString("es-CO"),
     fecha_corte: data.summary?.fecha_corte || "",
     total,
     transactions: data.transactions.map(t => ({ ...t, categories: [t.category] })),
-    summary: data.summary || {},
+    summary:      data.summary || {},
+  };
+  historyCache.unshift(entry);
+  if (historyCache.length > 20) historyCache.length = 20;
+
+  fetch("/api/history", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify(entry),
   });
-  // Keep only last 20 statements
-  if (history.length > 20) history.length = 20;
-  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); }
-  catch { /* storage full — skip silently */ }
   return id;
 }
 
 function persistCurrentState() {
   if (!currentHistoryId) return;
-  const history = loadHistory();
-  const idx = history.findIndex(h => h.id === currentHistoryId);
-  if (idx === -1) return;
-  history[idx].transactions = allTxns;
-  history[idx].total = allTxns
+  const entry = historyCache.find(h => h.id === currentHistoryId);
+  if (!entry) return;
+  entry.transactions = allTxns;
+  entry.total = allTxns
     .filter(t => t.amount > 0)
     .reduce((s, t) => s + chargedAmount(t), 0);
-  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); }
-  catch { /* storage full */ }
+
+  fetch(`/api/history/${currentHistoryId}`, {
+    method:  "PUT",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ transactions: entry.transactions, total: entry.total }),
+  });
 }
 
 function deleteFromHistory(id) {
-  const history = loadHistory().filter(h => h.id !== id);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  historyCache = historyCache.filter(h => h.id !== id);
+  fetch(`/api/history/${id}`, { method: "DELETE" });
   renderHistory();
 }
 
 function loadFromHistory(id) {
-  const entry = loadHistory().find(h => h.id === id);
+  const entry = historyCache.find(h => h.id === id);
   if (!entry) return;
   const seen = new Set();
   allTxns = entry.transactions.filter(t => {
@@ -171,6 +183,21 @@ function formatCOP(n) {
   }).format(Math.abs(n));
 }
 
+// ── Auth helpers ──────────────────────────────────────────────────────────────
+async function apiFetch(url, options = {}) {
+  const res = await fetch(url, options);
+  if (res.status === 401) {
+    window.location.href = "/login";
+    return null;
+  }
+  return res;
+}
+
+async function logout() {
+  await fetch("/auth/logout", { method: "POST" });
+  window.location.href = "/login";
+}
+
 // ── Upload ───────────────────────────────────────────────────────────────────
 const dropZone  = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
@@ -189,12 +216,12 @@ async function uploadFile(file) {
   const form = new FormData();
   form.append("file", file);
   try {
-    const res = await fetch("/api/extract", { method: "POST", body: form });
+    const res = await apiFetch("/api/extract", { method: "POST", body: form });
+    if (!res) return;
     if (!res.ok) throw new Error((await res.json()).detail || "Error desconocido");
     const data = await res.json();
     summary = data.summary || {};
 
-    // Convert single category → array; deduplicate by key
     const seen = new Set();
     allTxns = data.transactions
       .map(t => ({ ...t, categories: [t.category] }))
@@ -248,7 +275,6 @@ function renderResults() {
   renderTable();
 }
 
-// Monto real cobrado de una transacción: cargos_mes si existe, si no amount
 function chargedAmount(t) {
   return (t.cargos_mes != null) ? t.cargos_mes : t.amount;
 }
@@ -269,17 +295,15 @@ function renderDebt() {
   const cargosTotal = pos.reduce((s, t) => s + (t.cargos_mes || 0), 0);
   const difTotal    = pos.reduce((s, t) => s + (t.saldo_dif  || 0), 0);
   const saldoTotal  = summary.saldo_total || (cargosTotal + difTotal);
-  const minimo      = summary.pago_minimo || 0;
+  const minimo      = summary.pago_minimo  || 0;
   const pagado      = summary.pagos_abonos || 0;
-  const fechaLimite = summary.fecha_limite || "";
+  const fechaLimite = summary.fecha_limite  || "";
 
-  // Active installments (cuota_act > 0 = billing already started)
   const activeInstallments = allTxns.filter(
     t => t.cuota_tot && t.cuota_tot > 1 && t.amount > 0 && (t.cuota_act || 0) > 0
   );
   const difActivo = activeInstallments.reduce((s, t) => s + (t.saldo_dif || 0), 0);
 
-  // Stat cards
   document.getElementById("ds-saldo").textContent  = formatCOP(saldoTotal);
   document.getElementById("ds-vence").textContent  = fechaLimite ? `Vence ${fechaLimite}` : "";
   document.getElementById("ds-minimo").textContent = formatCOP(minimo);
@@ -289,7 +313,6 @@ function renderDebt() {
     ? `${activeInstallments.length} plan${activeInstallments.length !== 1 ? "es" : ""} en curso`
     : "Sin cuotas activas";
 
-  // Detail: Lo que debo (all positive charges sorted by amount desc)
   const owedTxns = allTxns
     .filter(t => t.amount > 0 && chargedAmount(t) > 0)
     .sort((a, b) => chargedAmount(b) - chargedAmount(a));
@@ -308,7 +331,6 @@ function renderDebt() {
       }).join("")
     : `<div class="ds-empty">Sin cargos</div>`;
 
-  // Detail: Lo que he pagado (negative transactions = payments / credits)
   const paidTxns = allTxns
     .filter(t => t.amount < 0)
     .sort((a, b) => a.amount - b.amount);
@@ -322,7 +344,6 @@ function renderDebt() {
       </div>`).join("")
     : `<div class="ds-empty">Sin pagos registrados</div>`;
 
-  // Detail: Lo que estoy pagando (active installment plans)
   document.getElementById("ds-detail-installments").innerHTML = activeInstallments.length
     ? activeInstallments.map(t => {
         const act = t.cuota_act || 0;
@@ -346,26 +367,22 @@ function renderDebt() {
       }).join("")
     : `<div class="ds-empty">Sin cuotas activas</div>`;
 
-  // Bars
   document.getElementById("debt-cargos").textContent   = formatCOP(cargosTotal);
   document.getElementById("debt-diferido").textContent = formatCOP(difTotal);
   const total = cargosTotal + difTotal || 1;
   document.getElementById("debt-bar-cargos").style.width = `${cargosTotal / total * 100}%`;
   document.getElementById("debt-bar-dif").style.width    = `${difTotal    / total * 100}%`;
 
-  // Reset simulator
   document.getElementById("sim-input").value = "";
   document.getElementById("sim-result").classList.add("hidden");
 }
 
 function renderSimulator() {
-  const raw = document.getElementById("sim-input").value.replace(/[^\d]/g, "");
-  const pago = parseFloat(raw) || 0;
+  const raw   = document.getElementById("sim-input").value.replace(/[^\d]/g, "");
+  const pago  = parseFloat(raw) || 0;
   const saldo = summary.saldo_total || 0;
   const result = document.getElementById("sim-result");
-
   if (pago <= 0 || saldo <= 0) { result.classList.add("hidden"); return; }
-
   const restante = Math.max(0, saldo - pago);
   result.textContent = restante === 0
     ? "🎉 ¡Deuda saldada!"
@@ -383,17 +400,17 @@ function renderCuotas() {
   section.classList.remove("hidden");
 
   const totalDif = installments.reduce((s, t) => s + (t.saldo_dif || 0), 0);
-
   document.getElementById("cuotas-toggle-label").textContent =
     `${installments.length} planes activos · ${formatCOP(totalDif)} pendiente`;
+
   document.getElementById("cuotas-list").innerHTML = installments.map(t => {
-    const act     = t.cuota_act ?? 0;
-    const tot     = t.cuota_tot;
+    const act       = t.cuota_act ?? 0;
+    const tot       = t.cuota_tot;
     const isPending = act === 0;
-    const pct     = isPending ? 0 : Math.round(act / tot * 100);
-    const cargos  = t.cargos_mes || 0;
-    const dif     = t.saldo_dif  || 0;
-    const tag     = isPending
+    const pct       = isPending ? 0 : Math.round(act / tot * 100);
+    const cargos    = t.cargos_mes || 0;
+    const dif       = t.saldo_dif  || 0;
+    const tag = isPending
       ? `<span class="cuota-tag-pending">Inicia próximo mes</span>`
       : `<span style="font-size:11px;color:var(--muted)">${act} de ${tot} pagadas</span>`;
 
@@ -401,9 +418,7 @@ function renderCuotas() {
       <div>
         <div class="cuota-desc">${t.description}</div>
         <div class="cuota-meta">${tag} · ${t.date}</div>
-        <div class="cuota-track">
-          <div class="cuota-fill" style="width:${pct}%"></div>
-        </div>
+        <div class="cuota-track"><div class="cuota-fill" style="width:${pct}%"></div></div>
       </div>
       <div class="cuota-right">
         <div class="cuota-mes">${isPending ? "cuota estimada" : "cuota este mes"}</div>
@@ -413,7 +428,6 @@ function renderCuotas() {
     </div>`;
   }).join("");
 
-  // Restore open state
   document.getElementById("cuotas-list").classList.toggle("cuotas-open", cuotasOpen);
   document.getElementById("cuotas-chevron").style.transform = cuotasOpen ? "rotate(180deg)" : "";
 }
@@ -426,7 +440,7 @@ function toggleCuotas() {
 
 // ── Category grid ─────────────────────────────────────────────────────────────
 function renderCatGrid() {
-  const cats = loadCategories();
+  const cats  = loadCategories();
   const pos   = allTxns.filter(t => t.amount > 0);
   const total = pos.reduce((s, t) => s + chargedAmount(t), 0);
 
@@ -437,18 +451,15 @@ function renderCatGrid() {
     bycat[cat].count += 1;
   }));
 
-  // Categories with transactions, sorted by amount
   const used = Object.entries(bycat).sort((a, b) => b[1].sum - a[1].sum);
-
-  // Custom categories with no transactions yet — show them at the end
   const usedNames = new Set(used.map(([n]) => n));
   cats.filter(c => c.custom && !usedNames.has(c.name))
       .forEach(c => used.push([c.name, { sum: 0, count: 0 }]));
 
   const grid = document.getElementById("cat-grid");
   grid.innerHTML = used.map(([name, d]) => {
-    const cat  = getCat(name);
-    const pct  = total > 0 ? (d.sum / total * 100).toFixed(1) : 0;
+    const cat     = getCat(name);
+    const pct     = total > 0 ? (d.sum / total * 100).toFixed(1) : 0;
     const isActive = activeFilter === name;
     const deleteBtn = cat.custom
       ? `<button class="cat-delete" onclick="removeCat(event,'${name}')" title="Eliminar">✕</button>`
@@ -503,7 +514,7 @@ function cancelConfirm(e) {
 
 // ── Filters ──────────────────────────────────────────────────────────────────
 function renderFilters() {
-  const used = new Set(allTxns.flatMap(t => t.categories));
+  const used  = new Set(allTxns.flatMap(t => t.categories));
   const chips = ["Todos", ...used];
   document.getElementById("filters").innerHTML = chips.map(name => {
     const active = name === activeFilter;
@@ -566,7 +577,6 @@ function updateBulkBar() {
     document.getElementById("bulk-count").textContent =
       `${n} transacción${n !== 1 ? "es" : ""} seleccionada${n !== 1 ? "s" : ""}`;
   }
-  // Sync select-all checkbox
   const allBox = document.getElementById("check-all");
   if (allBox) allBox.checked = n > 0 && n >= allTxns.length;
 }
@@ -584,7 +594,6 @@ function openBulkModal() {
 // ── Table ────────────────────────────────────────────────────────────────────
 function renderTable() {
   const query = (document.getElementById("search-input").value || "").toLowerCase().trim();
-
   const filtered = allTxns.filter(t => {
     const matchCat = activeFilter === "Todos" || t.categories.includes(activeFilter);
     const matchQ   = !query || t.description.toLowerCase().includes(query);
@@ -636,9 +645,8 @@ function renderTable() {
 
 // ── Category modal (multi-select) ─────────────────────────────────────────────
 function openModal(idx) {
-  editingIdx = idx;
+  editingIdx  = idx;
   pendingCats = [...allTxns[idx].categories];
-
   document.getElementById("modal-desc").textContent = allTxns[idx].description;
   renderModalCats();
   document.getElementById("modal").classList.remove("hidden");
@@ -665,7 +673,7 @@ function renderModalCats() {
 
 function togglePendingCat(name) {
   if (pendingCats.includes(name)) {
-    if (pendingCats.length === 1) return; // must keep at least one
+    if (pendingCats.length === 1) return;
     pendingCats = pendingCats.filter(c => c !== name);
   } else {
     pendingCats.push(name);
@@ -694,25 +702,10 @@ function saveModal() {
   persistCurrentState();
 }
 
-function pickColor(i) {
-  selectedColorIdx = i;
-  renderModalCats();
-}
-
 function pickEmoji(e) {
   selectedEmoji = e;
   document.querySelectorAll(".emoji-btn").forEach(el =>
     el.classList.toggle("selected", el.textContent === e));
-}
-
-function addCatFromModal() {
-  const name = document.getElementById("new-name").value.trim();
-  if (!name) return;
-  saveCustomCategory(name, selectedEmoji);
-  if (!pendingCats.includes(name)) pendingCats.push(name);
-  document.getElementById("new-name").value = "";
-  selectedEmoji = "🏷️";
-  renderModalCats();
 }
 
 function closeModal(e) {
@@ -724,8 +717,7 @@ function closeModal(e) {
 
 // ── New category from grid ────────────────────────────────────────────────────
 function openNewCatForm() {
-  // Open modal with a fake "new category" transaction context
-  editingIdx = null;
+  editingIdx  = null;
   pendingCats = [];
   document.getElementById("modal-desc").textContent = "Crear nueva categoría";
   document.getElementById("modal-cats").innerHTML =
@@ -779,33 +771,133 @@ function exportCSV() {
   }).click();
 }
 
-// ── Category learning ─────────────────────────────────────────────────────────
-const RULES_KEY = "drafiti_rules";
-
+// ── Category learning (backed by API) ─────────────────────────────────────────
 function learnRule(description, categories) {
-  const rules = JSON.parse(localStorage.getItem(RULES_KEY) || "{}");
-  rules[description.toUpperCase().trim()] = categories;
-  localStorage.setItem(RULES_KEY, JSON.stringify(rules));
+  const key = description.toUpperCase().trim();
+  learnedRulesCache[key] = categories;
+  fetch("/api/rules", {
+    method:  "PUT",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ key, categories }),
+  });
 }
 
 function applyLearnedRules(txns) {
-  const rules = JSON.parse(localStorage.getItem(RULES_KEY) || "{}");
-  const entries = Object.entries(rules);
+  const entries = Object.entries(learnedRulesCache);
   if (entries.length === 0) return txns;
   return txns.map(t => {
-    const desc = t.description.toUpperCase().trim();
+    const desc  = t.description.toUpperCase().trim();
     const match = entries.find(([k]) => desc === k || desc.includes(k) || k.includes(desc));
     return match ? { ...t, categories: match[1] } : t;
   });
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────────
-renderHistory();
+// ── Admin panel ───────────────────────────────────────────────────────────────
+async function openAdminPanel() {
+  document.getElementById("admin-modal").classList.remove("hidden");
+  await refreshAdminUsers();
+}
+
+function closeAdminPanel(e) {
+  if (!e || e.target.id === "admin-modal") {
+    document.getElementById("admin-modal").classList.add("hidden");
+    document.getElementById("admin-error").classList.add("hidden");
+  }
+}
+
+async function refreshAdminUsers() {
+  const res   = await apiFetch("/api/admin/users");
+  if (!res) return;
+  const users = await res.json();
+  const list  = document.getElementById("admin-user-list");
+  list.innerHTML = users.map(u => `
+    <div class="admin-user-row">
+      <div class="admin-user-info">
+        <span class="admin-user-name">${u.username}</span>
+        <span class="admin-user-email">${u.email}</span>
+        ${u.is_admin ? `<span class="admin-badge">admin</span>` : ""}
+        ${u.has_google ? `<span class="admin-google">✔ Google</span>` : `<span class="admin-pending">Sin cuenta Google</span>`}
+      </div>
+      ${u.id !== currentUser.id ? `
+        <button class="history-del" onclick="adminDeleteUser(${u.id})" title="Eliminar">✕</button>
+      ` : ""}
+    </div>`).join("");
+}
+
+async function adminCreateUser() {
+  const username = document.getElementById("admin-username").value.trim();
+  const email    = document.getElementById("admin-email").value.trim();
+  const isAdmin  = document.getElementById("admin-is-admin").checked;
+  const errEl    = document.getElementById("admin-error");
+
+  if (!username || !email) {
+    errEl.textContent = "Username y email son obligatorios.";
+    errEl.classList.remove("hidden");
+    return;
+  }
+
+  const res = await apiFetch("/api/admin/users", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ username, email, is_admin: isAdmin }),
+  });
+  if (!res) return;
+
+  if (!res.ok) {
+    const err = await res.json();
+    errEl.textContent = err.detail || "Error al crear usuario.";
+    errEl.classList.remove("hidden");
+    return;
+  }
+
+  errEl.classList.add("hidden");
+  document.getElementById("admin-username").value  = "";
+  document.getElementById("admin-email").value     = "";
+  document.getElementById("admin-is-admin").checked = false;
+  await refreshAdminUsers();
+}
+
+async function adminDeleteUser(userId) {
+  showConfirm("¿Eliminar este usuario y todos sus datos?", async () => {
+    const res = await apiFetch(`/api/admin/users/${userId}`, { method: "DELETE" });
+    if (res && res.ok) await refreshAdminUsers();
+  });
+}
 
 // ── Reset ─────────────────────────────────────────────────────────────────────
 function resetApp() {
-  allTxns = []; summary = {}; activeFilter = "Todos"; activeTab = "gastos"; cuotasOpen = false; currentHistoryId = null; selectedTxns.clear(); isBulkMode = false;
-  document.getElementById("file-input").value = "";
+  allTxns = []; summary = {}; activeFilter = "Todos"; activeTab = "gastos";
+  cuotasOpen = false; currentHistoryId = null;
+  selectedTxns.clear(); isBulkMode = false;
+  document.getElementById("file-input").value   = "";
   document.getElementById("search-input").value = "";
   show("upload-section");
 }
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  const meRes = await fetch("/api/me");
+  if (!meRes.ok) {
+    window.location.href = "/login";
+    return;
+  }
+  currentUser = await meRes.json();
+  document.getElementById("user-name").textContent = currentUser.username;
+  if (currentUser.is_admin) {
+    document.getElementById("admin-btn").classList.remove("hidden");
+  }
+
+  const [catsData, rulesData, historyData] = await Promise.all([
+    fetch("/api/categories").then(r => r.json()),
+    fetch("/api/rules").then(r => r.json()),
+    fetch("/api/history").then(r => r.json()),
+  ]);
+
+  customCats        = catsData;
+  learnedRulesCache = rulesData;
+  historyCache      = historyData;
+
+  renderHistory();
+}
+
+init();
