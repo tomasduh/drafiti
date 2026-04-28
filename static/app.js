@@ -181,7 +181,7 @@ dropZone.addEventListener("drop", e => {
   e.preventDefault(); dropZone.classList.remove("drag-over");
   if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]);
 });
-dropZone.addEventListener("click", () => fileInput.click());
+document.getElementById("select-file-btn").addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", e => { if (e.target.files[0]) uploadFile(e.target.files[0]); });
 
 async function uploadFile(file) {
