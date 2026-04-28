@@ -717,59 +717,65 @@ def extract_all(pdf_bytes: bytes, password: str = "") -> dict:
     txns: list = []
     seen: set  = set()
     summary: dict = {}
+    fmt = "credito"
+    text_read = False  # True once we've successfully read page text
 
     try:
-        pdf_io = io.BytesIO(pdf_bytes)
-        opener = pdfplumber.open(pdf_io, password=password) if password else pdfplumber.open(pdf_io)
-    except Exception as e:
-        raise ValueError("password_required") from e
+        with pdfplumber.open(io.BytesIO(pdf_bytes), password=password) as pdf:
+            first_text = pdf.pages[0].extract_text() or "" if pdf.pages else ""
+            # Empty text on an existing page = still encrypted
+            if not first_text and pdf.pages:
+                raise ValueError("password_required")
 
-    with opener as pdf:
-        first_text = pdf.pages[0].extract_text() or "" if pdf.pages else ""
-        # If no text at all on first page, PDF is likely still encrypted
-        if not first_text and pdf.pages:
-            raise ValueError("password_required")
+            text_read = True
+            fmt = _detect_type(first_text)
 
-        fmt = _detect_type(first_text)
+            for i, page in enumerate(pdf.pages):
+                text = page.extract_text() or ""
+                if i == 0:
+                    if fmt == "debito_nu":
+                        summary = parse_debit_summary(text)
+                    elif fmt == "debito_bancolombia":
+                        summary = parse_bancolombia_summary(text)
+                    else:
+                        summary = parse_summary(text)
 
-        for i, page in enumerate(pdf.pages):
-            text = page.extract_text() or ""
-            if i == 0:
                 if fmt == "debito_nu":
-                    summary = parse_debit_summary(text)
+                    year = summary.get("year", "2026")
+                    for line in text.split("\n"):
+                        txn = _parse_debit_line(line.strip(), year)
+                        if txn is None: continue
+                        key = (txn["date"], txn["description"], txn["amount"])
+                        if key in seen: continue
+                        seen.add(key); txns.append(txn)
+
                 elif fmt == "debito_bancolombia":
-                    summary = parse_bancolombia_summary(text)
+                    dy = summary.get("desde_year", "2026")
+                    dm = summary.get("desde_month", 1)
+                    hy = summary.get("hasta_year",  "2026")
+                    hm = summary.get("hasta_month", 12)
+                    for line in text.split("\n"):
+                        txn = _parse_bancolombia_line(line.strip(), dy, dm, hy, hm)
+                        if txn is None: continue
+                        key = (txn["date"], txn["description"], txn["amount"])
+                        if key in seen: continue
+                        seen.add(key); txns.append(txn)
+
                 else:
-                    summary = parse_summary(text)
+                    for line in text.split("\n"):
+                        txn = _parse_line(line.strip())
+                        if txn is None: continue
+                        key = (txn["date"], txn["description"], txn["amount"])
+                        if key in seen: continue
+                        seen.add(key); txns.append(txn)
 
-            if fmt == "debito_nu":
-                year = summary.get("year", "2026")
-                for line in text.split("\n"):
-                    txn = _parse_debit_line(line.strip(), year)
-                    if txn is None: continue
-                    key = (txn["date"], txn["description"], txn["amount"])
-                    if key in seen: continue
-                    seen.add(key); txns.append(txn)
-
-            elif fmt == "debito_bancolombia":
-                dy = summary.get("desde_year", "2026")
-                dm = summary.get("desde_month", 1)
-                hy = summary.get("hasta_year",  "2026")
-                hm = summary.get("hasta_month", 12)
-                for line in text.split("\n"):
-                    txn = _parse_bancolombia_line(line.strip(), dy, dm, hy, hm)
-                    if txn is None: continue
-                    key = (txn["date"], txn["description"], txn["amount"])
-                    if key in seen: continue
-                    seen.add(key); txns.append(txn)
-
-            else:
-                for line in text.split("\n"):
-                    txn = _parse_line(line.strip())
-                    if txn is None: continue
-                    key = (txn["date"], txn["description"], txn["amount"])
-                    if key in seen: continue
-                    seen.add(key); txns.append(txn)
+    except ValueError:
+        raise  # password_required — let api_extract handle it
+    except Exception as e:
+        if not text_read:
+            # Failed before reading any text → almost certainly a password issue
+            raise ValueError("password_required") from e
+        raise  # Unexpected error during parsing — surface it normally
 
     statement_type = "credito" if fmt == "credito" else "debito"
     return {
