@@ -13,7 +13,8 @@ elif DATABASE_URL.startswith("postgresql://") and "+asyncpg" not in DATABASE_URL
 # asyncpg doesn't accept sslmode in the query string
 DATABASE_URL = re.sub(r"[?&]sslmode=[^&]*", "", DATABASE_URL)
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+_connect_args = {"ssl": False} if DATABASE_URL.startswith("postgresql") else {}
+engine = create_async_engine(DATABASE_URL, echo=False, connect_args=_connect_args)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 
