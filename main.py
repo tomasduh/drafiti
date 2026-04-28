@@ -381,7 +381,7 @@ async def api_admin_delete_user(
 # ── PDF extraction ────────────────────────────────────────────────────────────
 
 CATEGORY_RULES = [
-    ("Pagos",            ["PAGO X PSE", "COBRO PRIMA SEGURO"]),
+    ("Pagos",            ["PAGO X PSE", "COBRO PRIMA SEGURO", "PAGO A"]),
     ("Fitness",          ["FITNESS24", "ZONAFIT", "ZONABIKER"]),
     ("Gasolina",         ["EDS EL BUENO", "EDS LA FLORA", "EDS BUENO"]),
     ("Digital",          ["STEAM", "TEBEX", "NETFLIX", "EBANX", "MERCADO PAGO"]),
@@ -395,6 +395,11 @@ CATEGORY_RULES = [
     ("Salidas",          ["CINE COLOMBIA", "MULTIPLEX", "PARQUEADERO"]),
     ("Compras",          ["PEPE GANGA", "FALABELLA", "BCS CARACOLI", "BMSUB"]),
     ("Centro Comercial", ["CEN CIAL"]),
+    # Débito (cuenta corriente / ahorros)
+    ("Ingresos",         ["RECIBISTE"]),
+    ("Efectivo",         ["RETIRO EN CAJERO", "RETIRO CAJERO"]),
+    ("Ahorro",           ["ABRISTE UN CDT"]),
+    ("Transferencias",   ["ENVIASTE A"]),
 ]
 
 FULL_RE = re.compile(
@@ -543,18 +548,117 @@ def _build(
     }
 
 
+# ── Debit account parser (Nu Cuenta de Ahorros) ───────────────────────────────
+
+DEBIT_MONTH_MAP = {
+    "ene": "01", "feb": "02", "mar": "03", "abr": "04",
+    "may": "05", "jun": "06", "jul": "07", "ago": "08",
+    "sep": "09", "oct": "10", "nov": "11", "dic": "12",
+}
+
+DEBIT_RE = re.compile(
+    r"^(\d{2})\s+(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)\s+"
+    r"(.+?)\s+([+-]\$[\d.,]+)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _detect_type(text: str) -> str:
+    """Returns 'debito' for Nu debit account statements, 'credito' otherwise."""
+    if "Nu Financiera" in text or "Cuenta Nu" in text:
+        return "debito"
+    return "credito"
+
+
+def _parse_cop_amount(s: str) -> Optional[float]:
+    """Parse Colombian-format amount: +$1.234.567,89 or -$60.000,00"""
+    s = s.strip()
+    negative = s.startswith("-")
+    s = re.sub(r"[+\-$\s]", "", s)
+    s = s.replace(".", "").replace(",", ".")
+    try:
+        val = float(s)
+        return -val if negative else val
+    except ValueError:
+        return None
+
+
+def parse_debit_summary(page1_text: str) -> dict:
+    summary: dict = {}
+
+    m = re.search(r"(\d{2})\s*-\s*(\d{2})\s+([A-Za-z]{3})\s+(\d{4})", page1_text)
+    if m:
+        summary["periodo"] = f"{m.group(1)}-{m.group(2)} {m.group(3).upper()} {m.group(4)}"
+        summary["year"]    = m.group(4)
+
+    def find_cop(pattern: str) -> Optional[float]:
+        fm = re.search(pattern, page1_text, re.IGNORECASE | re.DOTALL)
+        return _parse_cop_amount(fm.group(1)) if fm else None
+
+    amt = find_cop(r"inicio del mes\s+(\$[\d.,]+)")
+    if amt is not None: summary["saldo_inicial"] = amt
+
+    amt = find_cop(r"entr.{0,15}cuenta\s+(\+\$[\d.,]+)")
+    if amt is not None: summary["total_entradas"] = abs(amt)
+
+    amt = find_cop(r"sali.{0,15}cuenta\s+(-\$[\d.,]+)")
+    if amt is not None: summary["total_salidas"] = abs(amt)
+
+    amt = find_cop(r"Rendimiento total de tu cuenta\s+(\+\$[\d.,]+)")
+    if amt is not None: summary["rendimientos"] = abs(amt)
+
+    amt = find_cop(r"final del mes\s+(\$[\d.,]+)")
+    if amt is not None: summary["saldo_final"] = amt
+
+    return summary
+
+
+def _parse_debit_line(line: str, year: str = "2026") -> Optional[dict]:
+    m = DEBIT_RE.match(line.strip())
+    if not m:
+        return None
+    day, month_str, desc, amount_str = m.group(1), m.group(2), m.group(3), m.group(4)
+    month_num = DEBIT_MONTH_MAP.get(month_str.lower(), "01")
+    amount    = _parse_cop_amount(amount_str)
+    if amount is None:
+        return None
+    return {
+        "date":        f"{day}/{month_num}/{year}",
+        "description": desc.strip(),
+        "amount":      amount,
+        "category":    categorize(desc),
+        "saldo_corte": None,
+        "cargos_mes":  None,
+        "saldo_dif":   None,
+        "cuota_act":   None,
+        "cuota_tot":   None,
+    }
+
+
 def extract_all(pdf_bytes: bytes) -> dict:
     txns:    list = []
     seen:    set  = set()
     summary: dict = {}
 
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        first_text     = pdf.pages[0].extract_text() or "" if pdf.pages else ""
+        statement_type = _detect_type(first_text)
+
         for i, page in enumerate(pdf.pages):
             text = page.extract_text() or ""
             if i == 0:
-                summary = parse_summary(text)
+                summary = (
+                    parse_debit_summary(text)
+                    if statement_type == "debito"
+                    else parse_summary(text)
+                )
+            year = summary.get("year", "2026")
             for line in text.split("\n"):
-                txn = _parse_line(line.strip())
+                txn = (
+                    _parse_debit_line(line.strip(), year)
+                    if statement_type == "debito"
+                    else _parse_line(line.strip())
+                )
                 if txn is None:
                     continue
                 key = (txn["date"], txn["description"], txn["amount"])
@@ -563,7 +667,11 @@ def extract_all(pdf_bytes: bytes) -> dict:
                 seen.add(key)
                 txns.append(txn)
 
-    return {"transactions": txns, "summary": summary}
+    return {
+        "transactions":   txns,
+        "summary":        {**summary, "statement_type": statement_type},
+        "statement_type": statement_type,
+    }
 
 
 @app.post("/api/extract")

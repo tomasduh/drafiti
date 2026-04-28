@@ -12,6 +12,10 @@ const BUILTIN = [
   { name: "Digital",          icon: "💻", bg: "#DCFCE7", text: "#15803D" },
   { name: "Pagos",            icon: "💳", bg: "#F1F5F9", text: "#475569" },
   { name: "Centro Comercial", icon: "🏬", bg: "#FFE4E6", text: "#E11D48" },
+  { name: "Ingresos",         icon: "💰", bg: "#D1FAE5", text: "#059669" },
+  { name: "Efectivo",         icon: "🏧", bg: "#FEF3C7", text: "#D97706" },
+  { name: "Ahorro",           icon: "🏦", bg: "#DBEAFE", text: "#2563EB" },
+  { name: "Transferencias",   icon: "↔️",  bg: "#EDE9FE", text: "#7C3AED" },
   { name: "Otros",            icon: "📦", bg: "#F3F4F6", text: "#374151" },
 ];
 
@@ -80,15 +84,16 @@ function loadHistory() {
 }
 
 async function saveToHistory(filename, data) {
-  const id    = Date.now().toString();
-  const total = data.transactions
-    .filter(t => t.amount > 0)
-    .reduce((s, t) => s + ((t.cargos_mes != null) ? t.cargos_mes : t.amount), 0);
+  const id   = Date.now().toString();
+  const type = data.statement_type || "credito";
+  const total = type === "debito"
+    ? data.transactions.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0)
+    : data.transactions.filter(t => t.amount > 0).reduce((s, t) => s + ((t.cargos_mes != null) ? t.cargos_mes : t.amount), 0);
   const entry = {
     id,
     filename,
     uploadedAt:  new Date().toLocaleDateString("es-CO"),
-    fecha_corte: data.summary?.fecha_corte || "",
+    fecha_corte: data.summary?.fecha_corte || data.summary?.periodo || "",
     total,
     transactions: data.transactions.map(t => ({ ...t, categories: [t.category] })),
     summary:      data.summary || {},
@@ -109,9 +114,9 @@ function persistCurrentState() {
   const entry = historyCache.find(h => h.id === currentHistoryId);
   if (!entry) return;
   entry.transactions = allTxns;
-  entry.total = allTxns
-    .filter(t => t.amount > 0)
-    .reduce((s, t) => s + chargedAmount(t), 0);
+  entry.total = statementType === "debito"
+    ? allTxns.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0)
+    : allTxns.filter(t => t.amount > 0).reduce((s, t) => s + chargedAmount(t), 0);
 
   fetch(`/api/history/${currentHistoryId}`, {
     method:  "PUT",
@@ -135,7 +140,8 @@ function loadFromHistory(id) {
     if (seen.has(key)) return false;
     seen.add(key); return true;
   });
-  summary = entry.summary;
+  summary       = entry.summary;
+  statementType = entry.summary?.statement_type || "credito";
   currentHistoryId = id;
   activeFilter = "Todos"; activeTab = "gastos"; cuotasOpen = false;
   renderResults();
@@ -168,6 +174,7 @@ function renderHistory() {
 // ── State ────────────────────────────────────────────────────────────────────
 let allTxns          = [];
 let summary          = {};
+let statementType    = "credito";
 let activeFilter     = "Todos";
 let editingIdx       = null;
 let pendingCats      = [];
@@ -220,7 +227,8 @@ async function uploadFile(file) {
     if (!res) return;
     if (!res.ok) throw new Error((await res.json()).detail || "Error desconocido");
     const data = await res.json();
-    summary = data.summary || {};
+    summary       = data.summary || {};
+    statementType = data.statement_type || "credito";
 
     const seen = new Set();
     allTxns = data.transactions
@@ -266,6 +274,10 @@ function setTab(tab) {
 // ── Render all ───────────────────────────────────────────────────────────────
 function renderResults() {
   show("results");
+  // Update "Deuda" tab label depending on statement type
+  const deudaTab = document.querySelector(".nav-tab[data-tab='deuda']");
+  if (deudaTab) deudaTab.childNodes[deudaTab.childNodes.length - 1].textContent =
+    statementType === "debito" ? " Cuenta" : " Deuda";
   setTab(activeTab);
   renderHero();
   renderDebt();
@@ -281,16 +293,32 @@ function chargedAmount(t) {
 
 // ── Hero (gasto) ──────────────────────────────────────────────────────────────
 function renderHero() {
-  const pos   = allTxns.filter(t => t.amount > 0);
-  const total = pos.reduce((s, t) => s + chargedAmount(t), 0);
-  document.getElementById("hero-amount").textContent = formatCOP(total);
-  document.getElementById("hero-sub").textContent =
-    `${pos.length} transacciones · ${allTxns.filter(t => t.amount < 0).length} créditos`;
   document.getElementById("txn-count").textContent = `${allTxns.length} movimientos`;
+  if (statementType === "debito") {
+    const expenses = allTxns.filter(t => t.amount < 0);
+    const income   = allTxns.filter(t => t.amount > 0);
+    const total    = expenses.reduce((s, t) => s + Math.abs(t.amount), 0);
+    document.getElementById("hero-amount").textContent = formatCOP(total);
+    document.getElementById("hero-label").textContent  = "Gastos este período";
+    document.getElementById("hero-sub").textContent    =
+      `${expenses.length} gastos · ${income.length} ingresos`;
+  } else {
+    const pos   = allTxns.filter(t => t.amount > 0);
+    const total = pos.reduce((s, t) => s + chargedAmount(t), 0);
+    document.getElementById("hero-amount").textContent = formatCOP(total);
+    document.getElementById("hero-label").textContent  = "Cobrado este período";
+    document.getElementById("hero-sub").textContent    =
+      `${pos.length} transacciones · ${allTxns.filter(t => t.amount < 0).length} créditos`;
+  }
 }
 
-// ── Debt card ─────────────────────────────────────────────────────────────────
+// ── Debt card / Account card ──────────────────────────────────────────────────
 function renderDebt() {
+  const isDebito = statementType === "debito";
+  document.getElementById("deuda-credito").classList.toggle("hidden",  isDebito);
+  document.getElementById("deuda-debito").classList.toggle("hidden",  !isDebito);
+  if (isDebito) { renderDebitAccount(); return; }
+  // ── credit card logic below ────────────────────────────────────────────────
   const pos         = allTxns.filter(t => t.amount > 0);
   const cargosTotal = pos.reduce((s, t) => s + (t.cargos_mes || 0), 0);
   const difTotal    = pos.reduce((s, t) => s + (t.saldo_dif  || 0), 0);
@@ -377,6 +405,57 @@ function renderDebt() {
   document.getElementById("sim-result").classList.add("hidden");
 }
 
+function renderDebitAccount() {
+  const entradas   = summary.total_entradas || 0;
+  const salidas    = summary.total_salidas  || 0;
+  const rendimien  = summary.rendimientos   || 0;
+  const saldoFinal = summary.saldo_final    || 0;
+  const periodo    = summary.periodo        || "";
+
+  document.getElementById("da-saldo-final").textContent = formatCOP(saldoFinal);
+  document.getElementById("da-periodo").textContent     = periodo;
+  document.getElementById("da-entradas").textContent    = formatCOP(entradas);
+  document.getElementById("da-salidas").textContent     = formatCOP(salidas);
+
+  const incomeTxns  = allTxns.filter(t => t.amount > 0).sort((a, b) => b.amount - a.amount);
+  const expenseTxns = allTxns.filter(t => t.amount < 0).sort((a, b) => a.amount - b.amount);
+
+  document.getElementById("da-detail-income").innerHTML = incomeTxns.length
+    ? incomeTxns.map(t => `<div class="ds-detail-row">
+        <div class="ds-detail-left">
+          <div class="ds-detail-desc">${t.description}</div>
+          <div class="ds-detail-date">${t.date}</div>
+        </div>
+        <div class="ds-detail-val green">+${formatCOP(t.amount)}</div>
+      </div>`).join("")
+    : `<div class="ds-empty">Sin ingresos</div>`;
+
+  document.getElementById("da-detail-expense").innerHTML = expenseTxns.length
+    ? expenseTxns.map(t => `<div class="ds-detail-row">
+        <div class="ds-detail-left">
+          <div class="ds-detail-desc">${t.description}</div>
+          <div class="ds-detail-date">${t.date}</div>
+        </div>
+        <div class="ds-detail-val">${formatCOP(Math.abs(t.amount))}</div>
+      </div>`).join("")
+    : `<div class="ds-empty">Sin gastos</div>`;
+
+  // Bar proportions
+  const total = (entradas + salidas) || 1;
+  document.getElementById("da-bar-entradas").style.width    = `${entradas / total * 100}%`;
+  document.getElementById("da-bar-salidas").style.width     = `${salidas  / total * 100}%`;
+  document.getElementById("da-bar-entradas-val").textContent = formatCOP(entradas);
+  document.getElementById("da-bar-salidas-val").textContent  = formatCOP(salidas);
+
+  const rendRow = document.getElementById("da-rendimientos-row");
+  if (rendimien > 0) {
+    rendRow.style.display = "flex";
+    document.getElementById("da-rendimientos-val").textContent = `+${formatCOP(rendimien)}`;
+  } else {
+    rendRow.style.display = "none";
+  }
+}
+
 function renderSimulator() {
   const raw   = document.getElementById("sim-input").value.replace(/[^\d]/g, "");
   const pago  = parseFloat(raw) || 0;
@@ -394,6 +473,7 @@ function renderSimulator() {
 let cuotasOpen = false;
 
 function renderCuotas() {
+  if (statementType === "debito") return;
   const installments = allTxns.filter(t => t.cuota_tot && t.cuota_tot > 1 && t.amount > 0);
   const section = document.getElementById("cuotas-section");
   if (installments.length === 0) { section.classList.add("hidden"); return; }
@@ -440,14 +520,19 @@ function toggleCuotas() {
 
 // ── Category grid ─────────────────────────────────────────────────────────────
 function renderCatGrid() {
-  const cats  = loadCategories();
-  const pos   = allTxns.filter(t => t.amount > 0);
-  const total = pos.reduce((s, t) => s + chargedAmount(t), 0);
+  const cats = loadCategories();
+
+  // For debit: expenses are negative amounts; for credit: charges are positive
+  const relevant = statementType === "debito"
+    ? allTxns.filter(t => t.amount < 0)
+    : allTxns.filter(t => t.amount > 0);
+  const amountOf = t => statementType === "debito" ? Math.abs(t.amount) : chargedAmount(t);
+  const total    = relevant.reduce((s, t) => s + amountOf(t), 0);
 
   const bycat = {};
-  pos.forEach(t => t.categories.forEach(cat => {
+  relevant.forEach(t => t.categories.forEach(cat => {
     bycat[cat] = bycat[cat] || { sum: 0, count: 0 };
-    bycat[cat].sum   += chargedAmount(t);
+    bycat[cat].sum   += amountOf(t);
     bycat[cat].count += 1;
   }));
 
@@ -610,11 +695,15 @@ function renderTable() {
 
   document.getElementById("table-body").innerHTML = filtered.map(t => {
     const idx      = allTxns.indexOf(t);
-    const neg      = t.amount < 0;
-    const charged  = chargedAmount(t);
     const firstCat = getCat(t.categories[0]);
     const initial  = t.description[0].toUpperCase();
     const checked  = selectedTxns.has(idx);
+
+    // Credit: negative = payment (green). Debit: positive = income (green).
+    const isGreen = statementType === "debito" ? t.amount > 0 : t.amount < 0;
+    const displayAmt = statementType === "debito"
+      ? (t.amount > 0 ? `+${formatCOP(t.amount)}` : formatCOP(Math.abs(t.amount)))
+      : (t.amount < 0 ? `+${formatCOP(Math.abs(t.amount))}` : formatCOP(chargedAmount(t)));
 
     const badges = t.categories.map(name => {
       const c = getCat(name);
@@ -638,7 +727,7 @@ function renderTable() {
         <div class="desc-date">${t.date}</div>
       </td>
       <td><div class="badges">${badges}</div></td>
-      <td class="amount-cell right ${neg ? "credit" : ""}">${neg ? "+" : ""}${formatCOP(charged)}</td>
+      <td class="amount-cell right ${isGreen ? "credit" : ""}">${displayAmt}</td>
     </tr>`;
   }).join("");
 }
@@ -794,7 +883,8 @@ function applyLearnedRules(txns) {
 
 // ── Reset ─────────────────────────────────────────────────────────────────────
 function resetApp() {
-  allTxns = []; summary = {}; activeFilter = "Todos"; activeTab = "gastos";
+  allTxns = []; summary = {}; statementType = "credito";
+  activeFilter = "Todos"; activeTab = "gastos";
   cuotasOpen = false; currentHistoryId = null;
   selectedTxns.clear(); isBulkMode = false;
   document.getElementById("file-input").value   = "";

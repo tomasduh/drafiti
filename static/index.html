@@ -98,7 +98,7 @@
         <div class="hero-left">
           <div class="hero-emoji">🧾</div>
           <div>
-            <div class="hero-label">Cobrado este período</div>
+            <div class="hero-label" id="hero-label">Cobrado este período</div>
             <div class="hero-amount" id="hero-amount"></div>
             <div class="hero-sub" id="hero-sub"></div>
           </div>
@@ -149,84 +149,124 @@
       </div>
     </div>
 
-    <!-- ══ TAB: DEUDA ════════════════════════════════════════════ -->
+    <!-- ══ TAB: DEUDA / CUENTA ══════════════════════════════════ -->
     <div id="tab-deuda" class="hidden">
 
-      <!-- 3 stat cards -->
-      <div class="debt-stats-row">
-
-        <div class="ds-card ds-owed">
-          <div class="ds-icon-wrap">💳</div>
-          <div class="ds-label">Lo que debo</div>
-          <div class="ds-val" id="ds-saldo"></div>
-          <div class="ds-sub" id="ds-vence"></div>
-          <div class="ds-minimo">
-            <span>Pago mínimo</span>
-            <strong id="ds-minimo"></strong>
+      <!-- ── Vista tarjeta de crédito ── -->
+      <div id="deuda-credito">
+        <div class="debt-stats-row">
+          <div class="ds-card ds-owed">
+            <div class="ds-icon-wrap">💳</div>
+            <div class="ds-label">Lo que debo</div>
+            <div class="ds-val" id="ds-saldo"></div>
+            <div class="ds-sub" id="ds-vence"></div>
+            <div class="ds-minimo">
+              <span>Pago mínimo</span>
+              <strong id="ds-minimo"></strong>
+            </div>
+            <div class="ds-detail" id="ds-detail-owed"></div>
           </div>
-          <div class="ds-detail" id="ds-detail-owed"></div>
+          <div class="ds-card ds-paid">
+            <div class="ds-icon-wrap">✅</div>
+            <div class="ds-label">Lo que he pagado</div>
+            <div class="ds-val" id="ds-pagado"></div>
+            <div class="ds-sub">Abonos este período</div>
+            <div class="ds-detail" id="ds-detail-paid"></div>
+          </div>
+          <div class="ds-card ds-installments">
+            <div class="ds-icon-wrap">📅</div>
+            <div class="ds-label">Lo que estoy pagando</div>
+            <div class="ds-val" id="ds-cuotas"></div>
+            <div class="ds-sub" id="ds-cuotas-sub"></div>
+            <div class="ds-detail" id="ds-detail-installments"></div>
+          </div>
         </div>
-
-        <div class="ds-card ds-paid">
-          <div class="ds-icon-wrap">✅</div>
-          <div class="ds-label">Lo que he pagado</div>
-          <div class="ds-val" id="ds-pagado"></div>
-          <div class="ds-sub">Abonos este período</div>
-          <div class="ds-detail" id="ds-detail-paid"></div>
+        <div class="debt-breakdown-card" style="margin-bottom:20px">
+          <div class="debt-breakdown-title">Desglose del extracto</div>
+          <div class="debt-bars">
+            <div class="debt-bar-row">
+              <span>Cobrado este mes</span>
+              <strong id="debt-cargos"></strong>
+            </div>
+            <div class="debt-bar-track"><div class="debt-bar-fill blue" id="debt-bar-cargos"></div></div>
+            <div class="debt-bar-row" style="margin-top:10px">
+              <span>Compromisos futuros (cuotas)</span>
+              <strong id="debt-diferido"></strong>
+            </div>
+            <div class="debt-bar-track"><div class="debt-bar-fill orange" id="debt-bar-dif"></div></div>
+          </div>
+          <div class="sim-row">
+            <label class="sim-label">💸 Simular pago después del corte</label>
+            <div class="sim-input-row">
+              <span class="sim-prefix">$</span>
+              <input id="sim-input" type="text" inputmode="numeric" placeholder="0" oninput="renderSimulator()" />
+            </div>
+            <div class="sim-result hidden" id="sim-result"></div>
+          </div>
         </div>
-
-        <div class="ds-card ds-installments">
-          <div class="ds-icon-wrap">📅</div>
-          <div class="ds-label">Lo que estoy pagando</div>
-          <div class="ds-val" id="ds-cuotas"></div>
-          <div class="ds-sub" id="ds-cuotas-sub"></div>
-          <div class="ds-detail" id="ds-detail-installments"></div>
+        <div id="cuotas-section" class="hidden">
+          <button class="accordion-toggle" onclick="toggleCuotas()">
+            <div class="accordion-left">
+              <span class="accordion-icon">📅</span>
+              <div>
+                <div class="accordion-title">Cuotas activas</div>
+                <div class="accordion-sub" id="cuotas-toggle-label"></div>
+              </div>
+            </div>
+            <svg id="cuotas-chevron" width="18" height="18" viewBox="0 0 18 18" fill="none"
+              style="transition:transform 0.25s;flex-shrink:0">
+              <path d="M4.5 7l4.5 4.5L13.5 7" stroke="#6B7280" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div id="cuotas-list" class="cuotas-list"></div>
         </div>
-
       </div>
 
-      <!-- Breakdown + simulator -->
-      <div class="debt-breakdown-card" style="margin-bottom:20px">
-        <div class="debt-breakdown-title">Desglose del extracto</div>
-        <div class="debt-bars">
-          <div class="debt-bar-row">
-            <span>Cobrado este mes</span>
-            <strong id="debt-cargos"></strong>
+      <!-- ── Vista cuenta de débito ── -->
+      <div id="deuda-debito" class="hidden">
+        <div class="debt-stats-row">
+          <div class="ds-card ds-owed">
+            <div class="ds-icon-wrap">🏦</div>
+            <div class="ds-label">Saldo final</div>
+            <div class="ds-val" id="da-saldo-final"></div>
+            <div class="ds-sub" id="da-periodo"></div>
           </div>
-          <div class="debt-bar-track"><div class="debt-bar-fill blue" id="debt-bar-cargos"></div></div>
-          <div class="debt-bar-row" style="margin-top:10px">
-            <span>Compromisos futuros (cuotas)</span>
-            <strong id="debt-diferido"></strong>
+          <div class="ds-card ds-paid">
+            <div class="ds-icon-wrap">📈</div>
+            <div class="ds-label">Lo que entró</div>
+            <div class="ds-val" id="da-entradas"></div>
+            <div class="ds-sub">Ingresos del período</div>
+            <div class="ds-detail" id="da-detail-income"></div>
           </div>
-          <div class="debt-bar-track"><div class="debt-bar-fill orange" id="debt-bar-dif"></div></div>
+          <div class="ds-card ds-installments">
+            <div class="ds-icon-wrap">📉</div>
+            <div class="ds-label">Lo que salió</div>
+            <div class="ds-val" id="da-salidas"></div>
+            <div class="ds-sub">Gastos del período</div>
+            <div class="ds-detail" id="da-detail-expense"></div>
+          </div>
         </div>
-        <div class="sim-row">
-          <label class="sim-label">💸 Simular pago después del corte</label>
-          <div class="sim-input-row">
-            <span class="sim-prefix">$</span>
-            <input id="sim-input" type="text" inputmode="numeric" placeholder="0" oninput="renderSimulator()" />
-          </div>
-          <div class="sim-result hidden" id="sim-result"></div>
-        </div>
-      </div>
-
-      <!-- Cuotas accordion -->
-      <div id="cuotas-section" class="hidden">
-        <button class="accordion-toggle" onclick="toggleCuotas()">
-          <div class="accordion-left">
-            <span class="accordion-icon">📅</span>
-            <div>
-              <div class="accordion-title">Cuotas activas</div>
-              <div class="accordion-sub" id="cuotas-toggle-label"></div>
+        <div class="debt-breakdown-card" style="margin-bottom:20px">
+          <div class="debt-breakdown-title">Desglose del mes</div>
+          <div class="debt-bars">
+            <div class="debt-bar-row">
+              <span>Ingresos</span>
+              <strong id="da-bar-entradas-val" style="color:#059669"></strong>
+            </div>
+            <div class="debt-bar-track"><div class="debt-bar-fill" id="da-bar-entradas" style="background:#059669"></div></div>
+            <div class="debt-bar-row" style="margin-top:10px">
+              <span>Gastos</span>
+              <strong id="da-bar-salidas-val"></strong>
+            </div>
+            <div class="debt-bar-track"><div class="debt-bar-fill blue" id="da-bar-salidas"></div></div>
+            <div id="da-rendimientos-row" class="debt-bar-row" style="margin-top:16px;display:none">
+              <span>💰 Rendimientos ganados</span>
+              <strong id="da-rendimientos-val" style="color:#059669"></strong>
             </div>
           </div>
-          <svg id="cuotas-chevron" width="18" height="18" viewBox="0 0 18 18" fill="none"
-            style="transition:transform 0.25s;flex-shrink:0">
-            <path d="M4.5 7l4.5 4.5L13.5 7" stroke="#6B7280" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-        <div id="cuotas-list" class="cuotas-list"></div>
+        </div>
       </div>
+
     </div>
 
   </section>
