@@ -3,12 +3,15 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy import String, Boolean, DateTime, JSON, ForeignKey, Integer, Float, Text, UniqueConstraint
 from datetime import datetime, timezone
 import os
+import re
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./drafiti.db")
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
 elif DATABASE_URL.startswith("postgresql://") and "+asyncpg" not in DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+# asyncpg doesn't accept sslmode in the query string
+DATABASE_URL = re.sub(r"[?&]sslmode=[^&]*", "", DATABASE_URL)
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
