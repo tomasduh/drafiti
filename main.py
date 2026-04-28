@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Depends
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, JSONResponse, FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -381,12 +381,14 @@ async def api_admin_delete_user(
 # ── PDF extraction ────────────────────────────────────────────────────────────
 
 CATEGORY_RULES = [
-    ("Pagos",            ["PAGO X PSE", "COBRO PRIMA SEGURO", "PAGO A"]),
+    ("Pagos",            ["PAGO X PSE", "COBRO PRIMA SEGURO", "PAGO A",
+                          "IMPTO GOBIERNO", "PAGO CREDITO SUC", "PAGO PSE"]),
     ("Fitness",          ["FITNESS24", "ZONAFIT", "ZONABIKER"]),
     ("Gasolina",         ["EDS EL BUENO", "EDS LA FLORA", "EDS BUENO"]),
     ("Digital",          ["STEAM", "TEBEX", "NETFLIX", "EBANX", "MERCADO PAGO"]),
     ("Servicios",        ["MOVISTAR", "SIMIT VIAS", "DIR TRANSITO",
-                          "BOLD*PLAN", "BOLD*PLANIFICACION", "SEGURO", "SERVICIOS WEB"]),
+                          "BOLD*PLAN", "BOLD*PLANIFICACION", "SEGURO", "SERVICIOS WEB",
+                          "MANEJO TARJETA DEB", "COMISION TRASLADO", "IVA COMIS TRASLADO"]),
     ("Comida",           ["RAPPI", "HAMBURGUES", "SANDWICH", "PANINI", "RAMEN",
                           "CREPES", "WAFFLES", "STARBUCKS", "HORNO DE LENA",
                           "OXXO", "PLAY SHOTS", "LICORERA", "ALISON GUEVARA"]),
@@ -395,11 +397,11 @@ CATEGORY_RULES = [
     ("Salidas",          ["CINE COLOMBIA", "MULTIPLEX", "PARQUEADERO"]),
     ("Compras",          ["PEPE GANGA", "FALABELLA", "BCS CARACOLI", "BMSUB"]),
     ("Centro Comercial", ["CEN CIAL"]),
-    # Débito (cuenta corriente / ahorros)
-    ("Ingresos",         ["RECIBISTE"]),
+    # Cuentas de débito / ahorros
+    ("Ingresos",         ["RECIBISTE", "PAGO DE PROV", "ABONO INTERESES", "PAGO INTERBANC"]),
     ("Efectivo",         ["RETIRO EN CAJERO", "RETIRO CAJERO"]),
     ("Ahorro",           ["ABRISTE UN CDT"]),
-    ("Transferencias",   ["ENVIASTE A"]),
+    ("Transferencias",   ["ENVIASTE A", "TRASLADO VIRTUAL", "TRANSF A"]),
 ]
 
 FULL_RE = re.compile(
@@ -564,9 +566,11 @@ DEBIT_RE = re.compile(
 
 
 def _detect_type(text: str) -> str:
-    """Returns 'debito' for Nu debit account statements, 'credito' otherwise."""
+    """Returns statement format: 'debito_nu', 'debito_bancolombia', or 'credito'."""
     if "Nu Financiera" in text or "Cuenta Nu" in text:
-        return "debito"
+        return "debito_nu"
+    if "ESTADO DE CUENTA" in text and "CUENTA DE AHORROS" in text:
+        return "debito_bancolombia"
     return "credito"
 
 
@@ -635,38 +639,139 @@ def _parse_debit_line(line: str, year: str = "2026") -> Optional[dict]:
     }
 
 
-def extract_all(pdf_bytes: bytes) -> dict:
-    txns:    list = []
-    seen:    set  = set()
+# ── Bancolombia savings account parser ────────────────────────────────────────
+
+BANCOLOMBIA_TXN_RE = re.compile(
+    r"^(\d{2}/\d{2})\s+(.+?)\s+(-?(?:[\d,]+)?\.\d{1,2})\s+(-?(?:[\d,]+)?\.\d{1,2})\s*$"
+)
+
+
+def parse_bancolombia_summary(text: str) -> dict:
     summary: dict = {}
 
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        first_text     = pdf.pages[0].extract_text() or "" if pdf.pages else ""
-        statement_type = _detect_type(first_text)
+    # Period: "DESDE: 2025/12/31 HASTA: 2026/03/31"
+    m = re.search(r"DESDE:\s*(\d{4})/(\d{2})/(\d{2})\s+HASTA:\s*(\d{4})/(\d{2})/(\d{2})", text)
+    if m:
+        summary["desde_year"]  = m.group(1)
+        summary["desde_month"] = int(m.group(2))
+        summary["hasta_year"]  = m.group(4)
+        summary["hasta_month"] = int(m.group(5))
+        summary["periodo"]     = f"{m.group(3)}/{m.group(2)}/{m.group(1)} - {m.group(6)}/{m.group(5)}/{m.group(4)}"
+
+    def find_bc_amount(label: str) -> Optional[float]:
+        fm = re.search(label + r"\s*\$?\s*(\.?\d[\d,]*\.?\d*)", text)
+        if not fm:
+            return None
+        raw = fm.group(1).replace(",", "")
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+
+    amt = find_bc_amount(r"SALDO ANTERIOR")
+    if amt is not None: summary["saldo_inicial"] = amt
+
+    amt = find_bc_amount(r"TOTAL ABONOS")
+    if amt is not None: summary["total_entradas"] = amt
+
+    amt = find_bc_amount(r"TOTAL CARGOS")
+    if amt is not None: summary["total_salidas"] = amt
+
+    amt = find_bc_amount(r"SALDO ACTUAL")
+    if amt is not None: summary["saldo_final"] = amt
+
+    amt = find_bc_amount(r"VALOR INTERESES PAGADOS")
+    if amt is not None: summary["rendimientos"] = amt
+
+    return summary
+
+
+def _parse_bancolombia_line(line: str, desde_year: str, desde_month: int,
+                             hasta_year: str, hasta_month: int) -> Optional[dict]:
+    m = BANCOLOMBIA_TXN_RE.match(line.strip())
+    if not m:
+        return None
+    date_raw, desc, valor_str, _saldo = m.group(1), m.group(2), m.group(3), m.group(4)
+    day, month_str = date_raw.split("/")
+    month = int(month_str)
+    year  = hasta_year if month <= hasta_month else desde_year
+    amount_raw = valor_str.replace(",", "")
+    try:
+        amount = float(amount_raw)
+    except ValueError:
+        return None
+    return {
+        "date":        f"{day}/{month_str}/{year}",
+        "description": desc.strip(),
+        "amount":      amount,
+        "category":    categorize(desc),
+        "saldo_corte": None,
+        "cargos_mes":  None,
+        "saldo_dif":   None,
+        "cuota_act":   None,
+        "cuota_tot":   None,
+    }
+
+
+def extract_all(pdf_bytes: bytes, password: str = "") -> dict:
+    txns: list = []
+    seen: set  = set()
+    summary: dict = {}
+
+    try:
+        pdf_io = io.BytesIO(pdf_bytes)
+        opener = pdfplumber.open(pdf_io, password=password) if password else pdfplumber.open(pdf_io)
+    except Exception as e:
+        raise ValueError("password_required") from e
+
+    with opener as pdf:
+        first_text = pdf.pages[0].extract_text() or "" if pdf.pages else ""
+        # If no text at all on first page, PDF is likely still encrypted
+        if not first_text and pdf.pages:
+            raise ValueError("password_required")
+
+        fmt = _detect_type(first_text)
 
         for i, page in enumerate(pdf.pages):
             text = page.extract_text() or ""
             if i == 0:
-                summary = (
-                    parse_debit_summary(text)
-                    if statement_type == "debito"
-                    else parse_summary(text)
-                )
-            year = summary.get("year", "2026")
-            for line in text.split("\n"):
-                txn = (
-                    _parse_debit_line(line.strip(), year)
-                    if statement_type == "debito"
-                    else _parse_line(line.strip())
-                )
-                if txn is None:
-                    continue
-                key = (txn["date"], txn["description"], txn["amount"])
-                if key in seen:
-                    continue
-                seen.add(key)
-                txns.append(txn)
+                if fmt == "debito_nu":
+                    summary = parse_debit_summary(text)
+                elif fmt == "debito_bancolombia":
+                    summary = parse_bancolombia_summary(text)
+                else:
+                    summary = parse_summary(text)
 
+            if fmt == "debito_nu":
+                year = summary.get("year", "2026")
+                for line in text.split("\n"):
+                    txn = _parse_debit_line(line.strip(), year)
+                    if txn is None: continue
+                    key = (txn["date"], txn["description"], txn["amount"])
+                    if key in seen: continue
+                    seen.add(key); txns.append(txn)
+
+            elif fmt == "debito_bancolombia":
+                dy = summary.get("desde_year", "2026")
+                dm = summary.get("desde_month", 1)
+                hy = summary.get("hasta_year",  "2026")
+                hm = summary.get("hasta_month", 12)
+                for line in text.split("\n"):
+                    txn = _parse_bancolombia_line(line.strip(), dy, dm, hy, hm)
+                    if txn is None: continue
+                    key = (txn["date"], txn["description"], txn["amount"])
+                    if key in seen: continue
+                    seen.add(key); txns.append(txn)
+
+            else:
+                for line in text.split("\n"):
+                    txn = _parse_line(line.strip())
+                    if txn is None: continue
+                    key = (txn["date"], txn["description"], txn["amount"])
+                    if key in seen: continue
+                    seen.add(key); txns.append(txn)
+
+    statement_type = "credito" if fmt == "credito" else "debito"
     return {
         "transactions":   txns,
         "summary":        {**summary, "statement_type": statement_type},
@@ -676,14 +781,19 @@ def extract_all(pdf_bytes: bytes) -> dict:
 
 @app.post("/api/extract")
 async def api_extract(
-    file: UploadFile = File(...),
-    user: User       = Depends(get_current_user),
+    file:     UploadFile    = File(...),
+    password: Optional[str] = Form(None),
+    user:     User          = Depends(get_current_user),
 ):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Solo se aceptan archivos PDF")
     content = await file.read()
     try:
-        result = extract_all(content)
+        result = extract_all(content, password=password or "")
+    except ValueError as e:
+        if "password_required" in str(e):
+            raise HTTPException(422, "password_required")
+        raise HTTPException(500, f"Error procesando el PDF: {e}")
     except Exception as e:
         raise HTTPException(500, f"Error procesando el PDF: {e}")
     if not result["transactions"]:

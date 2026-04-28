@@ -158,16 +158,20 @@ function renderHistory() {
       <span>${history.length} guardado${history.length !== 1 ? "s" : ""}</span>
     </div>
     <div class="history-grid">
-      ${history.map(h => `
+      ${history.map(h => {
+        const hType = h.summary?.statement_type || "credito";
+        const hMeta = ACCOUNT_TYPE_META[hType] || ACCOUNT_TYPE_META.credito;
+        return `
         <div class="history-card" onclick="loadFromHistory('${h.id}')">
-          <div class="history-icon">📄</div>
+          <div class="history-icon">${hMeta.icon}</div>
           <div class="history-info">
             <div class="history-filename">${h.filename}</div>
-            <div class="history-meta">${h.fecha_corte ? `Corte ${h.fecha_corte} · ` : ""}Subido ${h.uploadedAt}</div>
+            <div class="history-meta">${h.fecha_corte ? `${h.fecha_corte} · ` : ""}${hMeta.label} · ${h.uploadedAt}</div>
           </div>
           <div class="history-amount">${formatCOP(h.total)}</div>
           <button class="history-del" onclick="event.stopPropagation(); deleteFromHistory('${h.id}')" title="Eliminar">✕</button>
-        </div>`).join("")}
+        </div>`;
+      }).join("")}
     </div>`;
 }
 
@@ -218,14 +222,26 @@ dropZone.addEventListener("drop", e => {
 document.getElementById("select-file-btn").addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", e => { if (e.target.files[0]) uploadFile(e.target.files[0]); });
 
-async function uploadFile(file) {
+let pendingFile = null;
+
+async function uploadFile(file, password = null) {
   show("loading");
   const form = new FormData();
   form.append("file", file);
+  if (password) form.append("password", password);
   try {
     const res = await apiFetch("/api/extract", { method: "POST", body: form });
     if (!res) return;
-    if (!res.ok) throw new Error((await res.json()).detail || "Error desconocido");
+    if (!res.ok) {
+      const err = await res.json();
+      if (err.detail === "password_required") {
+        pendingFile = file;
+        show("upload-section");
+        openPwdModal();
+        return;
+      }
+      throw new Error(err.detail || "Error desconocido");
+    }
     const data = await res.json();
     summary       = data.summary || {};
     statementType = data.statement_type || "credito";
@@ -291,9 +307,23 @@ function chargedAmount(t) {
   return (t.cargos_mes != null) ? t.cargos_mes : t.amount;
 }
 
+const ACCOUNT_TYPE_META = {
+  credito: { label: "Tarjeta de Crédito", icon: "💳", color: "#5C6BC0" },
+  debito:  { label: "Cuenta de Ahorros / Débito", icon: "🏦", color: "#059669" },
+};
+
 // ── Hero (gasto) ──────────────────────────────────────────────────────────────
 function renderHero() {
   document.getElementById("txn-count").textContent = `${allTxns.length} movimientos`;
+
+  const meta = ACCOUNT_TYPE_META[statementType] || ACCOUNT_TYPE_META.credito;
+  const badge = document.getElementById("account-type-badge");
+  if (badge) {
+    badge.textContent = `${meta.icon} ${meta.label}`;
+    badge.style.background = meta.color + "18";
+    badge.style.color       = meta.color;
+  }
+
   if (statementType === "debito") {
     const expenses = allTxns.filter(t => t.amount < 0);
     const income   = allTxns.filter(t => t.amount > 0);
@@ -879,6 +909,26 @@ function applyLearnedRules(txns) {
     const match = entries.find(([k]) => desc === k || desc.includes(k) || k.includes(desc));
     return match ? { ...t, categories: match[1] } : t;
   });
+}
+
+// ── Password modal ────────────────────────────────────────────────────────────
+function openPwdModal() {
+  document.getElementById("password-modal").classList.remove("hidden");
+  const input = document.getElementById("pdf-password");
+  input.value = "";
+  setTimeout(() => input.focus(), 80);
+}
+
+function closePwdModal() {
+  document.getElementById("password-modal").classList.add("hidden");
+  pendingFile = null;
+}
+
+async function submitWithPassword() {
+  const pwd = document.getElementById("pdf-password").value.trim();
+  if (!pwd || !pendingFile) { closePwdModal(); return; }
+  closePwdModal();
+  await uploadFile(pendingFile, pwd);
 }
 
 // ── Reset ─────────────────────────────────────────────────────────────────────

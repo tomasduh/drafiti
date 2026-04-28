@@ -98,7 +98,10 @@
         <div class="hero-left">
           <div class="hero-emoji">🧾</div>
           <div>
-            <div class="hero-label" id="hero-label">Cobrado este período</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <div class="hero-label" id="hero-label">Cobrado este período</div>
+              <span id="account-type-badge" class="account-type-badge"></span>
+            </div>
             <div class="hero-amount" id="hero-amount"></div>
             <div class="hero-sub" id="hero-sub"></div>
           </div>
@@ -291,6 +294,21 @@
     </div>
     <p id="modal-desc" class="modal-desc"></p>
     <div id="modal-cats" class="modal-cat-grid"></div>
+  </div>
+</div>
+
+<!-- Password modal -->
+<div id="password-modal" class="modal-overlay hidden">
+  <div class="modal-box confirm-box">
+    <div class="confirm-icon">🔒</div>
+    <p class="confirm-msg">Este PDF está protegido con contraseña</p>
+    <input id="pdf-password" type="password" class="pwd-input"
+      placeholder="Contraseña del PDF"
+      onkeydown="if(event.key==='Enter') submitWithPassword()" />
+    <div class="confirm-actions">
+      <button class="btn-cancel" onclick="closePwdModal()">Cancelar</button>
+      <button class="btn-confirm" onclick="submitWithPassword()">Abrir</button>
+    </div>
   </div>
 </div>
 
