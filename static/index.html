@@ -300,14 +300,26 @@
 <!-- Password modal -->
 <div id="password-modal" class="modal-overlay hidden">
   <div class="modal-box confirm-box">
-    <div class="confirm-icon">🔒</div>
-    <p class="confirm-msg">Este PDF está protegido con contraseña</p>
-    <input id="pdf-password" type="password" class="pwd-input"
-      placeholder="Contraseña del PDF"
-      onkeydown="if(event.key==='Enter') submitWithPassword()" />
-    <div class="confirm-actions">
+    <div class="pwd-modal-icon">🔐</div>
+    <div class="pwd-modal-title">PDF protegido</div>
+    <div class="pwd-modal-sub">Ingresa la contraseña para<br>desbloquear y leer el extracto</div>
+    <div class="pwd-input-wrap">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <rect x="3" y="7" width="10" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M5 7V5a3 3 0 116 0v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+      <input id="pdf-password" type="password" class="pwd-input"
+        placeholder="Contraseña del PDF"
+        onkeydown="if(event.key==='Enter') submitWithPassword()" />
+    </div>
+    <div class="pwd-modal-actions">
       <button class="btn-cancel" onclick="closePwdModal()">Cancelar</button>
-      <button class="btn-confirm" onclick="submitWithPassword()">Abrir</button>
+      <button class="btn-open" onclick="submitWithPassword()">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="display:inline;vertical-align:-2px;margin-right:5px">
+          <path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Abrir PDF
+      </button>
     </div>
   </div>
 </div>
