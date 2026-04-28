@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy import String, Boolean, DateTime, JSON, ForeignKey, Integer, Float, Text, UniqueConstraint
+from sqlalchemy import String, Boolean, DateTime, JSON, ForeignKey, Integer, BigInteger, Float, Text, UniqueConstraint
 from datetime import datetime, timezone
 import os
 import re
@@ -57,7 +57,7 @@ class HistoryEntry(Base):
     total: Mapped[float] = mapped_column(Float, default=0)
     summary_json: Mapped[dict] = mapped_column(JSON, default=dict)
     transactions_json: Mapped[list] = mapped_column(JSON, default=list)
-    sort_key: Mapped[int] = mapped_column(Integer, default=0)
+    sort_key: Mapped[int] = mapped_column(BigInteger, default=0)
 
     user: Mapped["User"] = relationship(back_populates="history_entries")
 
