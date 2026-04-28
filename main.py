@@ -114,6 +114,28 @@ async def auth_logout():
     response.delete_cookie(auth.COOKIE_NAME)
     return response
 
+
+DEV_BYPASS_AUTH = os.environ.get("DEV_BYPASS_AUTH", "").lower() == "true"
+
+@app.get("/auth/dev-login")
+async def auth_dev_login(db: AsyncSession = Depends(get_db)):
+    if not DEV_BYPASS_AUTH:
+        raise HTTPException(404, "Not found")
+    result = await db.execute(select(User).where(User.email == ADMIN_EMAIL))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(500, "Admin user not found")
+    token = auth.create_session_token(user.id)
+    response = RedirectResponse("/")
+    response.set_cookie(
+        auth.COOKIE_NAME, token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        max_age=auth.TOKEN_EXPIRE_DAYS * 86400,
+    )
+    return response
+
 # ── User info ─────────────────────────────────────────────────────────────────
 
 @app.get("/api/me")

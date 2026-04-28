@@ -10,6 +10,7 @@ set BASE_URL=http://localhost:8080
 set GOOGLE_CLIENT_ID=TU_CLIENT_ID_AQUI
 set GOOGLE_CLIENT_SECRET=TU_CLIENT_SECRET_AQUI
 set SECRET_KEY=una-clave-secreta-local-cualquiera
+set DEV_BYPASS_AUTH=true
 
 echo Iniciando Drafiti en http://localhost:8080
 echo Presiona Ctrl+C para detener.
