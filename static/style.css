@@ -739,12 +739,129 @@ td.avatar-cell { width: 52px; }
 .hidden { display: none !important; }
 
 /* ── Responsive ─────────────────────────────────────── */
-@media (max-width: 600px) {
-  main { padding: 20px 16px 48px; }
-  .hero-card { flex-direction: column; align-items: flex-start; padding: 22px 20px; }
-  .hero-amount { font-size: 26px; }
-  .cat-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+@media (max-width: 640px) {
+  /* Header */
+  header { padding: 0 14px; height: 52px; }
+  .user-name { display: none; }
+  .txn-pill { display: none; }
+  .btn-ghost { padding: 8px 10px; font-size: 12px; gap: 4px; }
+
+  /* Main */
+  main { padding: 16px 12px 88px; }
+
+  /* Bottom nav bar */
+  .main-nav {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    border-radius: 0;
+    padding: 4px 0 env(safe-area-inset-bottom, 6px);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.06);
+    z-index: 30;
+    background: var(--surface);
+    justify-content: stretch;
+  }
+  .nav-tab {
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 12px;
+    border-radius: 0;
+    font-size: 11px;
+    font-weight: 600;
+    justify-content: center;
+  }
+  .nav-tab.active {
+    background: none;
+    box-shadow: none;
+    color: var(--primary);
+    border-top: 2px solid var(--primary);
+  }
+  .nav-tab svg { width: 18px; height: 18px; }
+
+  /* Hero */
+  .hero-card {
+    flex-direction: column; align-items: flex-start;
+    padding: 18px 16px; gap: 10px;
+  }
+  .hero-left { gap: 12px; }
+  .hero-emoji { font-size: 28px; }
+  .hero-amount { font-size: 24px; }
+  .hero-sub { font-size: 11px; }
+
+  /* Category grid: 2 columns */
+  .cat-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .cat-card { padding: 12px 10px; }
+  .cat-icon { font-size: 22px; margin-bottom: 4px; }
+  .cat-amount { font-size: 14px; }
+  .cat-card.add-card { min-height: 90px; }
+
+  /* Section heading */
+  .section-heading { margin-bottom: 10px; }
+  .section-hint { display: none; }
+
+  /* Filters */
+  .filters { gap: 5px; }
+  .chip { font-size: 11px; padding: 4px 10px; }
+
+  /* List header */
+  .list-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .search-wrap { width: 100%; min-width: unset; }
+
+  /* Table */
+  .table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #txn-table thead th:nth-child(1),
+  #txn-table tbody  td:nth-child(1) { display: none; }
+  tbody td { padding: 9px 10px; }
+  thead th { padding: 8px 10px; }
+  .desc-name { font-size: 12px; }
+  .desc-date { font-size: 10px; }
+  .amount-cell { font-size: 13px; }
+  .badge { font-size: 10px; padding: 2px 6px; }
+  td.avatar-cell { width: 40px; }
+  .avatar { width: 30px; height: 30px; font-size: 12px; border-radius: 8px; }
+
+  /* Modal as bottom sheet */
+  .modal-overlay { align-items: flex-end; padding: 0; }
+  .modal-box {
+    border-radius: 20px 20px 0 0;
+    padding: 20px 16px 28px;
+    max-height: 85vh;
+  }
   .modal-cat-grid { grid-template-columns: 1fr; }
-  .list-header { flex-direction: column; align-items: flex-start; }
-  .search-wrap { width: 100%; }
+
+  /* Confirm modal stays centered on mobile */
+  #confirm-modal { align-items: center; padding: 20px; }
+  #confirm-modal .modal-box { border-radius: var(--radius); }
+
+  /* Debt stats */
+  .debt-stats-row { grid-template-columns: 1fr; }
+
+  /* Upload */
+  #upload-section { padding-top: 28px; padding-bottom: 40px; gap: 24px; }
+  .drop-zone { padding: 36px 20px; }
+  .upload-icon-ring { width: 60px; height: 60px; }
+  .drop-zone h2 { font-size: 17px; }
+
+  /* History cards */
+  .history-card { padding: 11px 12px; gap: 10px; }
+  .history-icon { width: 32px; height: 32px; font-size: 15px; border-radius: 8px; }
+  .history-filename { font-size: 12px; }
+  .history-amount { font-size: 13px; }
+
+  /* Bulk action bar */
+  .bulk-bar { bottom: 72px; padding: 10px 16px; font-size: 12px; gap: 8px; }
+  .bulk-count { font-size: 12px; }
+  .btn-bulk { padding: 6px 12px; font-size: 12px; }
+
+  /* Breakdown card */
+  .debt-breakdown-card { padding: 16px; }
+}
+
+/* Slightly larger phones/small tablets */
+@media (max-width: 380px) {
+  .cat-grid { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .cat-card { padding: 10px 8px; }
+  .cat-amount { font-size: 13px; }
+  .hero-amount { font-size: 22px; }
 }

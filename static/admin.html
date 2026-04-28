@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drafiti — Admin</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    main { max-width: 760px; }
+
+    .page-heading {
+      font-size: 20px; font-weight: 700; color: var(--text);
+      margin-bottom: 6px;
+    }
+    .page-sub {
+      font-size: 13px; color: var(--muted); margin-bottom: 28px;
+    }
+
+    /* Add user card */
+    .add-card-box {
+      background: var(--surface); border-radius: var(--radius);
+      padding: 22px 24px; box-shadow: var(--shadow-sm);
+      margin-bottom: 24px;
+    }
+    .add-card-title {
+      font-size: 13px; font-weight: 700; color: var(--text);
+      margin-bottom: 14px;
+    }
+    .add-form {
+      display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
+    }
+    .add-form-field {
+      display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 150px;
+    }
+    .add-form-field label {
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .add-form-field input {
+      padding: 9px 13px; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 13px;
+      background: var(--bg); color: var(--text); outline: none;
+      transition: border-color 0.15s;
+    }
+    .add-form-field input:focus { border-color: var(--primary); }
+    .add-form-check {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 13px; color: var(--muted); cursor: pointer;
+      padding-bottom: 2px;
+    }
+    .add-form-check input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--primary); }
+    .add-error {
+      background: #FEE2E2; color: #DC2626;
+      border-radius: var(--radius-sm); padding: 8px 13px;
+      font-size: 13px; margin-top: 10px;
+    }
+    .add-success {
+      background: #D1FAE5; color: #059669;
+      border-radius: var(--radius-sm); padding: 8px 13px;
+      font-size: 13px; margin-top: 10px;
+    }
+
+    /* User list */
+    .user-list-card {
+      background: var(--surface); border-radius: var(--radius);
+      box-shadow: var(--shadow-sm); overflow: hidden;
+    }
+    .user-list-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; border-bottom: 1px solid var(--border);
+    }
+    .user-list-title { font-size: 14px; font-weight: 700; }
+    .user-count {
+      font-size: 12px; color: var(--muted);
+      background: var(--bg); padding: 3px 10px; border-radius: 99px;
+    }
+
+    .user-row {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px 20px; border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+    .user-row:last-child { border-bottom: none; }
+    .user-row:hover { background: #FAFBFF; }
+
+    .user-avatar {
+      width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+      background: var(--primary-light); color: var(--primary);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; font-weight: 700; text-transform: uppercase;
+    }
+    .user-info { flex: 1; min-width: 0; }
+    .user-name-row {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    }
+    .user-name-val { font-size: 14px; font-weight: 600; color: var(--text); }
+    .user-email-val { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .badge-admin {
+      background: var(--primary-light); color: var(--primary);
+      font-size: 11px; font-weight: 700; padding: 2px 7px;
+      border-radius: 99px; white-space: nowrap;
+    }
+    .badge-google { font-size: 11px; color: #059669; font-weight: 600; }
+    .badge-pending { font-size: 11px; color: #9CA3AF; }
+
+    .user-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .user-joined { font-size: 11px; color: #9CA3AF; white-space: nowrap; }
+
+    .btn-del-user {
+      background: none; border: 1px solid #FECACA; color: #EF4444;
+      border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: background 0.15s;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .btn-del-user:hover { background: #FEE2E2; }
+
+    .empty-list {
+      text-align: center; padding: 48px 20px;
+      color: var(--muted); font-size: 13px;
+    }
+
+    /* Confirm overlay */
+    .confirm-overlay {
+      position: fixed; inset: 0;
+      background: rgba(17,24,39,0.45); backdrop-filter: blur(3px);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100; padding: 20px;
+    }
+    .confirm-box {
+      background: var(--surface); border-radius: var(--radius);
+      padding: 32px 28px; max-width: 340px; width: 100%;
+      box-shadow: var(--shadow-lg); text-align: center;
+    }
+    .confirm-icon { font-size: 32px; margin-bottom: 12px; }
+    .confirm-msg { font-size: 14px; line-height: 1.5; margin-bottom: 24px; }
+    .confirm-actions { display: flex; gap: 10px; justify-content: center; }
+
+    @media (max-width: 640px) {
+      main { padding: 16px 12px 40px; }
+      .add-form { flex-direction: column; }
+      .add-form-field { min-width: unset; width: 100%; }
+      .user-row { padding: 12px 14px; gap: 10px; }
+      .user-avatar { width: 32px; height: 32px; font-size: 13px; border-radius: 8px; }
+      .user-joined { display: none; }
+      .user-list-header { padding: 12px 14px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-mark">✦</div>
+    <span class="logo-text">drafiti</span>
+  </div>
+  <div class="header-right">
+    <div class="user-menu">
+      <a class="btn-ghost" href="/">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+          <path d="M8 2L3 6.5 8 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Volver
+      </a>
+      <span id="user-name" class="user-name"></span>
+      <button class="btn-ghost" onclick="logout()">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M5 2H2a1 1 0 00-1 1v7a1 1 0 001 1h3M9 9l3-2.5L9 4M5 6.5h7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Salir
+      </button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="page-heading">Gestión de usuarios</div>
+  <p class="page-sub" id="page-sub">Cargando…</p>
+
+  <!-- Add user form -->
+  <div class="add-card-box">
+    <div class="add-card-title">Agregar usuario</div>
+    <div class="add-form">
+      <div class="add-form-field">
+        <label>Username</label>
+        <input id="f-username" type="text" placeholder="ej. maria123" autocomplete="off" />
+      </div>
+      <div class="add-form-field">
+        <label>Email</label>
+        <input id="f-email" type="email" placeholder="ej. maria@email.com" autocomplete="off" />
+      </div>
+      <label class="add-form-check">
+        <input type="checkbox" id="f-admin" />
+        Admin
+      </label>
+      <button class="btn-confirm" style="align-self:flex-end;padding:9px 20px" onclick="createUser()">Agregar</button>
+    </div>
+    <div id="add-msg" class="hidden"></div>
+  </div>
+
+  <!-- User list -->
+  <div class="user-list-card">
+    <div class="user-list-header">
+      <span class="user-list-title">Usuarios registrados</span>
+      <span class="user-count" id="user-count">—</span>
+    </div>
+    <div id="user-list"><div class="empty-list">Cargando…</div></div>
+  </div>
+</main>
+
+<!-- Confirm overlay -->
+<div class="confirm-overlay hidden" id="confirm-overlay">
+  <div class="confirm-box">
+    <div class="confirm-icon">🗑️</div>
+    <p class="confirm-msg" id="confirm-msg"></p>
+    <div class="confirm-actions">
+      <button class="btn-cancel" onclick="cancelDelete()">Cancelar</button>
+      <button class="btn-danger" id="confirm-ok">Eliminar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+let currentUser = null;
+let pendingDeleteId = null;
+
+async function logout() {
+  await fetch("/auth/logout", { method: "POST" });
+  window.location.href = "/login";
+}
+
+function formatDate(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+async function loadUsers() {
+  const res = await fetch("/api/admin/users");
+  if (!res.ok) return [];
+  return res.json();
+}
+
+function renderUsers(users) {
+  document.getElementById("user-count").textContent = `${users.length} usuario${users.length !== 1 ? "s" : ""}`;
+  const list = document.getElementById("user-list");
+  if (users.length === 0) {
+    list.innerHTML = '<div class="empty-list">No hay usuarios</div>';
+    return;
+  }
+  list.innerHTML = users.map(u => `
+    <div class="user-row">
+      <div class="user-avatar">${u.username[0]}</div>
+      <div class="user-info">
+        <div class="user-name-row">
+          <span class="user-name-val">${u.username}</span>
+          ${u.is_admin ? '<span class="badge-admin">admin</span>' : ""}
+          ${u.has_google
+            ? '<span class="badge-google">✔ Google</span>'
+            : '<span class="badge-pending">Sin Google</span>'}
+        </div>
+        <div class="user-email-val">${u.email}</div>
+      </div>
+      <div class="user-actions">
+        <span class="user-joined">desde ${formatDate(u.created_at)}</span>
+        ${u.id !== currentUser.id ? `
+          <button class="btn-del-user" onclick="confirmDelete(${u.id}, '${u.username}')">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2 3h8M5 1h2M4.5 5v4M7.5 5v4M3 3l.5 7h5l.5-7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Eliminar
+          </button>` : '<span class="badge-pending" style="font-size:11px">Tú</span>'}
+      </div>
+    </div>`).join("");
+}
+
+async function createUser() {
+  const username = document.getElementById("f-username").value.trim();
+  const email    = document.getElementById("f-email").value.trim();
+  const isAdmin  = document.getElementById("f-admin").checked;
+  const msgEl    = document.getElementById("add-msg");
+
+  msgEl.className = "hidden";
+  if (!username || !email) {
+    showMsg("Username y email son obligatorios.", "error");
+    return;
+  }
+
+  const res = await fetch("/api/admin/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, email, is_admin: isAdmin }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    showMsg(err.detail || "Error al crear usuario.", "error");
+    return;
+  }
+
+  document.getElementById("f-username").value = "";
+  document.getElementById("f-email").value    = "";
+  document.getElementById("f-admin").checked  = false;
+  showMsg(`Usuario "${username}" creado correctamente.`, "success");
+  const users = await loadUsers();
+  renderUsers(users);
+}
+
+function showMsg(text, type) {
+  const el = document.getElementById("add-msg");
+  el.textContent = text;
+  el.className = type === "error" ? "add-error" : "add-success";
+  setTimeout(() => { el.className = "hidden"; }, 4000);
+}
+
+function confirmDelete(id, name) {
+  pendingDeleteId = id;
+  document.getElementById("confirm-msg").textContent = `¿Eliminar a "${name}" y todos sus datos? Esta acción no se puede deshacer.`;
+  document.getElementById("confirm-ok").onclick = deleteUser;
+  document.getElementById("confirm-overlay").classList.remove("hidden");
+}
+
+function cancelDelete() {
+  pendingDeleteId = null;
+  document.getElementById("confirm-overlay").classList.add("hidden");
+}
+
+async function deleteUser() {
+  if (!pendingDeleteId) return;
+  document.getElementById("confirm-overlay").classList.add("hidden");
+  const res = await fetch(`/api/admin/users/${pendingDeleteId}`, { method: "DELETE" });
+  pendingDeleteId = null;
+  if (res.ok) {
+    const users = await loadUsers();
+    renderUsers(users);
+  } else {
+    const err = await res.json();
+    showMsg(err.detail || "Error al eliminar.", "error");
+  }
+}
+
+async function init() {
+  const meRes = await fetch("/api/me");
+  if (!meRes.ok) { window.location.href = "/login"; return; }
+  currentUser = await meRes.json();
+  if (!currentUser.is_admin) { window.location.href = "/"; return; }
+
+  document.getElementById("user-name").textContent = currentUser.username;
+  document.getElementById("page-sub").textContent  = "Solo los admins pueden acceder a esta página.";
+
+  const users = await loadUsers();
+  renderUsers(users);
+}
+
+init();
+</script>
+</body>
+</html>

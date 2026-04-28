@@ -583,5 +583,10 @@ async def api_extract(
     return result
 
 
+@app.get("/admin")
+async def admin_page():
+    return FileResponse("static/admin.html")
+
+
 # ── Static files (must be last) ───────────────────────────────────────────────
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
