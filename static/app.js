@@ -79,7 +79,7 @@ function loadHistory() {
   return historyCache;
 }
 
-function saveToHistory(filename, data) {
+async function saveToHistory(filename, data) {
   const id    = Date.now().toString();
   const total = data.transactions
     .filter(t => t.amount > 0)
@@ -96,7 +96,7 @@ function saveToHistory(filename, data) {
   historyCache.unshift(entry);
   if (historyCache.length > 20) historyCache.length = 20;
 
-  fetch("/api/history", {
+  await fetch("/api/history", {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
     body:    JSON.stringify(entry),
@@ -233,7 +233,7 @@ async function uploadFile(file) {
       });
 
     allTxns = applyLearnedRules(allTxns);
-    currentHistoryId = saveToHistory(file.name, data);
+    currentHistoryId = await saveToHistory(file.name, data);
     activeFilter = "Todos";
     renderResults();
   } catch (e) {
