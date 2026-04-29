@@ -404,24 +404,28 @@ async def api_admin_delete_user(
 
 CATEGORY_RULES = [
     ("Pagos",            ["PAGO X PSE", "COBRO PRIMA SEGURO", "PAGO A",
-                          "IMPTO GOBIERNO", "PAGO CREDITO SUC", "PAGO PSE"]),
+                          "IMPTO GOBIERNO", "PAGO CREDITO SUC", "PAGO PSE",
+                          "ABONO SUCURSAL"]),
     ("Fitness",          ["FITNESS24", "ZONAFIT", "ZONABIKER"]),
-    ("Gasolina",         ["EDS EL BUENO", "EDS LA FLORA", "EDS BUENO"]),
-    ("Digital",          ["STEAM", "TEBEX", "NETFLIX", "EBANX", "MERCADO PAGO"]),
+    ("Gasolina",         ["EDS EL BUENO", "EDS LA FLORA", "EDS BUENO", "EDS "]),
+    ("Digital",          ["STEAM", "TEBEX", "NETFLIX", "EBANX", "MERCADO PAGO",
+                          "MERCADOPAGO", "APPLE.COM", "CLAUDE.AI", "PAGSEGURO"]),
     ("Servicios",        ["MOVISTAR", "SIMIT VIAS", "DIR TRANSITO",
                           "BOLD*PLAN", "BOLD*PLANIFICACION", "SEGURO", "SERVICIOS WEB",
-                          "MANEJO TARJETA DEB", "COMISION TRASLADO", "IVA COMIS TRASLADO"]),
+                          "MANEJO TARJETA DEB", "COMISION TRASLADO", "IVA COMIS TRASLADO",
+                          "COMISION AVANCE", "INTERESES CORRIENTES", "PAYU", "CHOCONATO"]),
     ("Comida",           ["RAPPI", "HAMBURGUES", "SANDWICH", "PANINI", "RAMEN",
                           "CREPES", "WAFFLES", "STARBUCKS", "HORNO DE LENA",
-                          "OXXO", "PLAY SHOTS", "LICORERA", "ALISON GUEVARA"]),
+                          "OXXO", "PLAY SHOTS", "LICORERA", "ALISON GUEVARA", "OBLEAS"]),
     ("Mercado",          ["ALMACENES EXITO", "EXITO BUCARAMANGA", "EXITO ORIENTA",
-                          "TIENDAS ARA", "TIENDA D1", "PRICESMART", "MERCAGABY", "SURTIDORA"]),
+                          "TIENDAS ARA", "TIENDA D1", "PRICESMART", "MERCAGABY", "SURTIDORA",
+                          "SUPERM MAS POR MENOS"]),
     ("Salidas",          ["CINE COLOMBIA", "MULTIPLEX", "PARQUEADERO"]),
     ("Compras",          ["PEPE GANGA", "FALABELLA", "BCS CARACOLI", "BMSUB"]),
     ("Centro Comercial", ["CEN CIAL"]),
     # Cuentas de débito / ahorros
     ("Ingresos",         ["RECIBISTE", "PAGO DE PROV", "ABONO INTERESES", "PAGO INTERBANC"]),
-    ("Efectivo",         ["RETIRO EN CAJERO", "RETIRO CAJERO"]),
+    ("Efectivo",         ["RETIRO EN CAJERO", "RETIRO CAJERO", "AVANCE SUCURSAL"]),
     ("Ahorro",           ["ABRISTE UN CDT"]),
     ("Transferencias",   ["ENVIASTE A", "TRASLADO VIRTUAL", "TRANSF A"]),
 ]
@@ -593,6 +597,8 @@ def _detect_type(text: str) -> str:
         return "debito_nu"
     if "ESTADO DE CUENTA" in text and "CUENTA DE AHORROS" in text:
         return "debito_bancolombia"
+    if "Deuda a la fecha de corte:" in text or "Cupo total:" in text:
+        return "credito_bancolombia"
     return "credito"
 
 
@@ -735,6 +741,145 @@ def _parse_bancolombia_line(line: str, desde_year: str, desde_month: int,
     }
 
 
+# ── Bancolombia credit card parser ────────────────────────────────────────────
+
+# 633777 23/03/2026 APPLE.COM/BILL $ 900,00 1/36 $ 25,00 1,9110 % 25,5026 % $ 875,00
+BC_CRED_FULL_RE = re.compile(
+    r"^(\d{6})\s+(\d{2}/\d{2}/\d{4})\s+(.+?)\s+"
+    r"\$\s*(-?[\d.]+,\d{2})\s+"
+    r"(\d+)/(\d+)\s+"
+    r"\$\s*([\d.]+,\d{2})\s+"
+    r"[\d,]+\s*%\s+[\d,]+\s*%\s+"
+    r"\$\s*([\d.]+,\d{2})\s*$"
+)
+
+# 156269 17/03/2026 ABONO SUCURSAL VIRTUAL $ -300.000,00 $ -300.000,00 $ 0,00
+BC_CRED_SIMPLE_RE = re.compile(
+    r"^(\d{6})\s+(\d{2}/\d{2}/\d{4})\s+(.+?)\s+"
+    r"\$\s*(-?[\d.]+,\d{2})\s+"
+    r"\$\s*(-?[\d.]+,\d{2})\s+"
+    r"\$\s*([\d.]+,\d{2})\s*$"
+)
+
+# 30/03/2026 INTERESES CORRIENTES $ 59.231,46 $ 59.231,46 $ 0,00
+BC_CRED_NOAUTH_RE = re.compile(
+    r"^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+"
+    r"\$\s*([\d.]+,\d{2})\s+"
+    r"\$\s*([\d.]+,\d{2})\s+"
+    r"\$\s*([\d.]+,\d{2})\s*$"
+)
+
+_BC_MONTH_MAP = {
+    "ene": "01", "feb": "02", "mar": "03", "abr": "04",
+    "may": "05", "jun": "06", "jul": "07", "ago": "08",
+    "sep": "09", "oct": "10", "nov": "11", "dic": "12",
+}
+
+
+def _undecuple(s: str) -> str:
+    """Collapse triple-encoded PDF text: 'TTTaaa' -> 'Ta'."""
+    result = []
+    i = 0
+    while i < len(s):
+        result.append(s[i])
+        if i + 2 < len(s) and s[i] == s[i + 1] == s[i + 2]:
+            i += 3
+        else:
+            i += 1
+    return "".join(result)
+
+
+def parse_bc_credit_summary(page1_text: str) -> dict:
+    summary: dict = {}
+
+    m = re.search(
+        r"(\d{1,2})\s+(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)\.?"
+        r"\s*-\s*(\d{1,2})\s+(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)\.?"
+        r"\s+(\d{4})",
+        page1_text, re.IGNORECASE,
+    )
+    if m:
+        end_day   = m.group(3).zfill(2)
+        end_month = _BC_MONTH_MAP.get(m.group(4).lower(), "01")
+        summary["fecha_corte"] = f"{end_day}/{end_month}/{m.group(5)}"
+
+    m = re.search(r"Cupo total:\s*\$\s*([\d.,]+)", page1_text)
+    if m:
+        amt = _parse_cop_amount(m.group(1))
+        if amt is not None:
+            summary["cupo_total"] = amt
+
+    triple_amounts = re.findall(r"\${1,3}\s*((?:\d{3}|[.,]{3})+)", page1_text)
+    decoded = [_parse_cop_amount(_undecuple(ta)) for ta in triple_amounts]
+    decoded = [v for v in decoded if v is not None and v > 100]
+    # deduplicate preserving order (saldo_total can appear twice in the layout)
+    seen_vals: list = []
+    for v in decoded:
+        if v not in seen_vals:
+            seen_vals.append(v)
+    if seen_vals:
+        summary["saldo_total"] = seen_vals[0]
+    if len(seen_vals) >= 2:
+        summary["pago_minimo"] = seen_vals[1]
+
+    return summary
+
+
+def _parse_bc_credit_line(line: str) -> Optional[dict]:
+    m = BC_CRED_FULL_RE.match(line)
+    if m:
+        amount = _parse_cop_amount(m.group(4))
+        if amount is None:
+            return None
+        return {
+            "date":        m.group(2),
+            "description": m.group(3).strip(),
+            "amount":      amount,
+            "category":    categorize(m.group(3)),
+            "saldo_corte": None,
+            "cargos_mes":  None,
+            "saldo_dif":   _parse_cop_amount(m.group(8)),
+            "cuota_act":   int(m.group(5)),
+            "cuota_tot":   int(m.group(6)),
+        }
+
+    m = BC_CRED_SIMPLE_RE.match(line)
+    if m:
+        amount = _parse_cop_amount(m.group(4))
+        if amount is None:
+            return None
+        return {
+            "date":        m.group(2),
+            "description": m.group(3).strip(),
+            "amount":      amount,
+            "category":    categorize(m.group(3)),
+            "saldo_corte": None,
+            "cargos_mes":  None,
+            "saldo_dif":   None,
+            "cuota_act":   None,
+            "cuota_tot":   None,
+        }
+
+    m = BC_CRED_NOAUTH_RE.match(line)
+    if m:
+        amount = _parse_cop_amount(m.group(3))
+        if amount is None:
+            return None
+        return {
+            "date":        m.group(1),
+            "description": m.group(2).strip(),
+            "amount":      amount,
+            "category":    categorize(m.group(2)),
+            "saldo_corte": None,
+            "cargos_mes":  None,
+            "saldo_dif":   None,
+            "cuota_act":   None,
+            "cuota_tot":   None,
+        }
+
+    return None
+
+
 def extract_all(pdf_bytes: bytes, password: str = "") -> dict:
     txns: list = []
     seen: set  = set()
@@ -759,6 +904,8 @@ def extract_all(pdf_bytes: bytes, password: str = "") -> dict:
                         summary = parse_debit_summary(text)
                     elif fmt == "debito_bancolombia":
                         summary = parse_bancolombia_summary(text)
+                    elif fmt == "credito_bancolombia":
+                        summary = parse_bc_credit_summary(text)
                     else:
                         summary = parse_summary(text)
 
@@ -783,6 +930,14 @@ def extract_all(pdf_bytes: bytes, password: str = "") -> dict:
                         if key in seen: continue
                         seen.add(key); txns.append(txn)
 
+                elif fmt == "credito_bancolombia":
+                    for line in text.split("\n"):
+                        txn = _parse_bc_credit_line(line.strip())
+                        if txn is None: continue
+                        key = (txn["date"], txn["description"], txn["amount"])
+                        if key in seen: continue
+                        seen.add(key); txns.append(txn)
+
                 else:
                     for line in text.split("\n"):
                         txn = _parse_line(line.strip())
@@ -799,7 +954,7 @@ def extract_all(pdf_bytes: bytes, password: str = "") -> dict:
             raise ValueError("password_required") from e
         raise  # Unexpected error during parsing — surface it normally
 
-    statement_type = "credito" if fmt == "credito" else "debito"
+    statement_type = "credito" if fmt in ("credito", "credito_bancolombia") else "debito"
     return {
         "transactions":   txns,
         "summary":        {**summary, "statement_type": statement_type},
