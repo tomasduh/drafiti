@@ -424,10 +424,14 @@ CATEGORY_RULES = [
     ("Compras",          ["PEPE GANGA", "FALABELLA", "BCS CARACOLI", "BMSUB"]),
     ("Centro Comercial", ["CEN CIAL"]),
     # Cuentas de débito / ahorros
-    ("Ingresos",         ["RECIBISTE", "PAGO DE PROV", "ABONO INTERESES", "PAGO INTERBANC"]),
+    ("Pagos",            ["PAGO DE TARJETA DE CREDITO", "PAGO DE TARJETA"]),
+    ("Ingresos",         ["RECIBISTE", "PAGO DE PROV", "ABONO INTERESES", "PAGO INTERBANC",
+                          "ABONO POR INTERESES", "AVANCE A CTA TC"]),
     ("Efectivo",         ["RETIRO EN CAJERO", "RETIRO CAJERO", "AVANCE SUCURSAL"]),
     ("Ahorro",           ["ABRISTE UN CDT"]),
-    ("Transferencias",   ["ENVIASTE A", "TRASLADO VIRTUAL", "TRANSF A"]),
+    ("Transferencias",   ["ENVIASTE A", "TRASLADO VIRTUAL", "TRANSF A",
+                          "ENVIO POR BRE-B", "TRANSFERENCIA"]),
+    ("Servicios",        ["CARGO POR IMPUESTO", "COBRO PORTAFOLIO", "CUOTA DE MANEJO"]),
 ]
 
 FULL_RE = re.compile(
@@ -592,11 +596,13 @@ DEBIT_RE = re.compile(
 
 
 def _detect_type(text: str) -> str:
-    """Returns statement format: 'debito_nu', 'debito_bancolombia', or 'credito'."""
+    """Returns statement format: 'debito_nu', 'debito_bancolombia', 'debito_davivienda', 'credito_bancolombia', or 'credito'."""
     if "Nu Financiera" in text or "Cuenta Nu" in text:
         return "debito_nu"
     if "ESTADO DE CUENTA" in text and "CUENTA DE AHORROS" in text:
         return "debito_bancolombia"
+    if "SALDO CIERRE MES ANTERIOR" in text or "CUENTA DE AHORROS LIBRETON" in text:
+        return "debito_davivienda"
     if "Deuda a la fecha de corte:" in text or "Cupo total:" in text:
         return "credito_bancolombia"
     return "credito"
@@ -880,6 +886,101 @@ def _parse_bc_credit_line(line: str) -> Optional[dict]:
     return None
 
 
+# ── Davivienda savings account parser ────────────────────────────────────────
+
+# 1316 28-02-2026 02-03-2026 AVANCE A CTA TC 40428044273826 150,000.00 3,558,419.59
+DAVI_TXN_RE = re.compile(
+    r"^(\d{4})\s+(\d{2}-\d{2}-\d{4})\s+(\d{2}-\d{2}-\d{4})\s+(.+?)\s+"
+    r"([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$"
+)
+
+# 31-03-2026 31-03-2026 ABONO POR INTERESES DE CUENTA 2.00 3,100,706.86
+DAVI_NONUM_RE = re.compile(
+    r"^(\d{2}-\d{2}-\d{4})\s+(\d{2}-\d{2}-\d{4})\s+(.+?)\s+"
+    r"([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$"
+)
+
+
+def _parse_us_amount(s: str) -> Optional[float]:
+    try:
+        return float(str(s).strip().replace(",", ""))
+    except ValueError:
+        return None
+
+
+def parse_davivienda_summary(text: str) -> dict:
+    summary: dict = {}
+
+    m = re.search(r"DESDE:\s*(\d{2})-(\d{2})-(\d{4})\s+HASTA:\s*(\d{2})-(\d{2})-(\d{4})", text)
+    if m:
+        summary["desde_year"]  = m.group(3)
+        summary["desde_month"] = int(m.group(2))
+        summary["hasta_year"]  = m.group(6)
+        summary["hasta_month"] = int(m.group(5))
+        summary["periodo"]     = f"{m.group(1)}/{m.group(2)}/{m.group(3)} - {m.group(4)}/{m.group(5)}/{m.group(6)}"
+
+    def find_us(label: str) -> Optional[float]:
+        fm = re.search(label + r"\s+(?:\d+\s+)?([\d,]+\.\d{2})", text)
+        return _parse_us_amount(fm.group(1)) if fm else None
+
+    amt = find_us(r"SALDO CIERRE MES ANTERIOR")
+    if amt is not None: summary["saldo_inicial"] = amt
+
+    amt = find_us(r"\+ ABONOS")
+    if amt is not None: summary["total_entradas"] = amt
+
+    amt = find_us(r"\+ INTERESES RECIBIDOS")
+    if amt is not None: summary["rendimientos"] = amt
+
+    amt = find_us(r"- CARGOS")
+    if amt is not None: summary["total_salidas"] = amt
+
+    amt = find_us(r"SALDO FINAL")
+    if amt is not None: summary["saldo_final"] = amt
+
+    return summary
+
+
+def _parse_davivienda_lines(text: str, prev_balance: list) -> list[dict]:
+    """Parse Davivienda transaction lines. prev_balance is [float] (mutable) for cross-page continuity."""
+    txns = []
+    for line in text.split("\n"):
+        line = line.strip()
+        m = DAVI_TXN_RE.match(line)
+        if m:
+            date_raw, desc, amount_str, bal_str = m.group(2), m.group(4), m.group(5), m.group(6)
+        else:
+            m = DAVI_NONUM_RE.match(line)
+            if not m:
+                continue
+            date_raw, desc, amount_str, bal_str = m.group(1), m.group(3), m.group(4), m.group(5)
+
+        amount  = _parse_us_amount(amount_str)
+        balance = _parse_us_amount(bal_str)
+        if amount is None or balance is None:
+            continue
+
+        if prev_balance[0] is not None:
+            sign = 1 if balance > prev_balance[0] else -1
+        else:
+            sign = -1
+        prev_balance[0] = balance
+
+        d, mo, y = date_raw.split("-")
+        txns.append({
+            "date":        f"{d}/{mo}/{y}",
+            "description": desc.strip(),
+            "amount":      sign * amount,
+            "category":    categorize(desc),
+            "saldo_corte": None,
+            "cargos_mes":  None,
+            "saldo_dif":   None,
+            "cuota_act":   None,
+            "cuota_tot":   None,
+        })
+    return txns
+
+
 def extract_all(pdf_bytes: bytes, password: str = "") -> dict:
     txns: list = []
     seen: set  = set()
@@ -904,6 +1005,9 @@ def extract_all(pdf_bytes: bytes, password: str = "") -> dict:
                         summary = parse_debit_summary(text)
                     elif fmt == "debito_bancolombia":
                         summary = parse_bancolombia_summary(text)
+                    elif fmt == "debito_davivienda":
+                        summary = parse_davivienda_summary(text)
+                        davi_prev_balance = [summary.get("saldo_inicial")]
                     elif fmt == "credito_bancolombia":
                         summary = parse_bc_credit_summary(text)
                     else:
@@ -934,6 +1038,12 @@ def extract_all(pdf_bytes: bytes, password: str = "") -> dict:
                     for line in text.split("\n"):
                         txn = _parse_bc_credit_line(line.strip())
                         if txn is None: continue
+                        key = (txn["date"], txn["description"], txn["amount"])
+                        if key in seen: continue
+                        seen.add(key); txns.append(txn)
+
+                elif fmt == "debito_davivienda":
+                    for txn in _parse_davivienda_lines(text, davi_prev_balance):
                         key = (txn["date"], txn["description"], txn["amount"])
                         if key in seen: continue
                         seen.add(key); txns.append(txn)
