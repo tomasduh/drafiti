@@ -3,11 +3,12 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Dep
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, JSONResponse, FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, text
 import pdfplumber
 import re
 import io
 import os
+import hashlib
 import asyncio
 import uuid as _uuid
 import logging
@@ -33,6 +34,24 @@ ADMIN_USERNAME = _RAW_ADMIN_USERNAME or "tomasduh"
 _HEX_RE  = re.compile(r"^#[0-9a-fA-F]{6}$")
 _NAME_RE = re.compile(r"^[\w\sáéíóúñÁÉÍÓÚÑ&\-]{1,40}$")
 
+# ── Normalización de merchant key ──────────────────────────────────────────────
+_MK_TLD     = re.compile(r'\.(COM|NET|ORG|CO|IO|APP)\b', re.I)
+_MK_DIGITS  = re.compile(r'\b\d{3,}\b')
+_MK_SPECIAL = re.compile(r'[*#@]')
+_MK_NOISE   = {
+    "CO", "COL", "BOGOTA", "BOGOTÁ", "MEDELLIN", "MEDELLÍN",
+    "CALI", "BARRANQUILLA", "CARTAGENA", "SAS", "LTDA", "SA",
+    "DE", "EL", "LA", "LOS", "LAS",
+}
+
+def _merchant_key(desc: str) -> str:
+    s = _MK_TLD.sub("", desc.upper().strip())
+    s = _MK_SPECIAL.sub(" ", s)
+    s = _MK_DIGITS.sub("", s)
+    s = s.replace(".", " ")
+    tokens = [t for t in s.split() if len(t) > 1 and t not in _MK_NOISE]
+    return " ".join(tokens)
+
 def sanitize_text(s: str, max_len: int = 255) -> str:
     return re.sub(r"[<>\"']", "", str(s))[:max_len]
 
@@ -52,9 +71,26 @@ limiter = Limiter(key_func=get_remote_address)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await _migrate_db()
     await _ensure_admin()
     await _cleanup_revoked_tokens()
     yield
+
+
+async def _migrate_db():
+    from db import engine as _engine
+    async with _engine.begin() as conn:
+        try:
+            if "postgresql" in str(_engine.url):
+                await conn.execute(text(
+                    "ALTER TABLE history_entries ADD COLUMN IF NOT EXISTS file_hash VARCHAR(64)"
+                ))
+            else:
+                await conn.execute(text(
+                    "ALTER TABLE history_entries ADD COLUMN file_hash VARCHAR(64)"
+                ))
+        except Exception:
+            pass  # columna ya existe
 
 
 async def _ensure_admin():
@@ -274,13 +310,14 @@ async def api_get_history(
     entries = result.scalars().all()
     return [
         {
-            "id":          e.id,
-            "filename":    e.filename,
-            "fecha_corte": e.fecha_corte,
-            "uploadedAt":  e.uploaded_at,
-            "total":       e.total,
-            "summary":     e.summary_json,
+            "id":           e.id,
+            "filename":     e.filename,
+            "fecha_corte":  e.fecha_corte,
+            "uploadedAt":   e.uploaded_at,
+            "total":        e.total,
+            "summary":      e.summary_json,
             "transactions": e.transactions_json,
+            "file_hash":    e.file_hash,
         }
         for e in entries
     ]
@@ -292,7 +329,36 @@ async def api_save_history(
     user:    User         = Depends(get_current_user),
     db:      AsyncSession = Depends(get_db),
 ):
-    body     = await request.json()
+    body      = await request.json()
+    file_hash = body.get("file_hash") or None
+    new_txns  = body.get("transactions", [])
+
+    # ── Re-upload dedup: same file hash → merge categories, don't create new entry
+    if file_hash:
+        result = await db.execute(
+            select(HistoryEntry)
+            .where(HistoryEntry.user_id == user.id, HistoryEntry.file_hash == file_hash)
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            old_by_key = {
+                f"{t['date']}|{t['description']}|{t['amount']}": t
+                for t in existing.transactions_json
+            }
+            merged = []
+            for t in new_txns:
+                key = f"{t['date']}|{t['description']}|{t['amount']}"
+                old = old_by_key.get(key)
+                merged.append({**t, "categories": old["categories"]} if old else t)
+            existing.transactions_json = merged
+            existing.summary_json      = body.get("summary", {})
+            existing.total             = body.get("total", 0)
+            existing.filename          = sanitize_text(body.get("filename", ""), 255)
+            existing.fecha_corte       = body.get("fecha_corte")
+            existing.sort_key          = int(datetime.now(timezone.utc).timestamp() * 1000)
+            await db.commit()
+            return {"ok": True, "id": existing.id}
+
     entry_id = str(_uuid.uuid4())
     sort_key = int(datetime.now(timezone.utc).timestamp() * 1000)
     entry    = HistoryEntry(
@@ -303,8 +369,9 @@ async def api_save_history(
         uploaded_at       = datetime.now(timezone.utc).strftime("%d/%m/%Y"),
         total             = body.get("total", 0),
         summary_json      = body.get("summary", {}),
-        transactions_json = body.get("transactions", []),
+        transactions_json = new_txns,
         sort_key          = sort_key,
+        file_hash         = file_hash,
     )
     db.add(entry)
 
@@ -382,7 +449,7 @@ async def api_save_rule(
     db:      AsyncSession = Depends(get_db),
 ):
     body = await request.json()
-    key  = body["key"].upper().strip()
+    key  = _merchant_key(body["key"])
     cats = body["categories"]
 
     result = await db.execute(
@@ -1207,6 +1274,7 @@ async def api_extract(
     content = await file.read()
     if not content.startswith(b"%PDF-"):
         raise HTTPException(400, "El archivo no es un PDF válido")
+    file_hash = hashlib.sha256(content).hexdigest()
     try:
         result = await asyncio.wait_for(
             asyncio.to_thread(extract_all, content, password or ""),
@@ -1224,6 +1292,7 @@ async def api_extract(
         raise HTTPException(500, "No se pudo procesar el PDF")
     if not result["transactions"]:
         raise HTTPException(400, "No se encontraron transacciones en el PDF")
+    result["file_hash"] = file_hash
     return result
 
 

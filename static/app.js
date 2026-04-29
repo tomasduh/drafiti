@@ -95,6 +95,7 @@ async function saveToHistory(filename, data) {
     total,
     transactions: data.transactions.map(t => ({ ...t, categories: [t.category] })),
     summary:      data.summary || {},
+    file_hash:    data.file_hash || null,
   };
 
   const res = await apiFetch("/api/history", {
@@ -107,17 +108,39 @@ async function saveToHistory(filename, data) {
   const result = await res.json();
   const id     = result.id;
 
-  const entry = {
-    id,
-    filename,
-    uploadedAt:  new Date().toLocaleDateString("es-CO"),
-    fecha_corte: payload.fecha_corte,
-    total,
-    transactions: payload.transactions,
-    summary:      payload.summary,
-  };
-  historyCache.unshift(entry);
-  if (historyCache.length > 20) historyCache.length = 20;
+  // If server returned an existing entry (re-upload), reload transactions from server
+  // so local cache reflects the merged categories
+  const existingIdx = historyCache.findIndex(h => h.id === id);
+  if (existingIdx !== -1) {
+    const existing = historyCache[existingIdx];
+    existing.filename    = filename;
+    existing.fecha_corte = payload.fecha_corte;
+    existing.total       = total;
+    existing.summary     = payload.summary;
+    existing.file_hash   = payload.file_hash;
+    // Merge categories from server: re-fetch this entry's transactions
+    const refreshed = await fetch(`/api/history`).then(r => r.json()).catch(() => null);
+    if (refreshed) {
+      const srv = refreshed.find(h => h.id === id);
+      if (srv) existing.transactions = srv.transactions;
+    }
+    // Bubble to top
+    historyCache.splice(existingIdx, 1);
+    historyCache.unshift(existing);
+  } else {
+    const entry = {
+      id,
+      filename,
+      uploadedAt:  new Date().toLocaleDateString("es-CO"),
+      fecha_corte: payload.fecha_corte,
+      total,
+      transactions: payload.transactions,
+      summary:      payload.summary,
+      file_hash:    payload.file_hash,
+    };
+    historyCache.unshift(entry);
+    if (historyCache.length > 20) historyCache.length = 20;
+  }
   return id;
 }
 
@@ -227,6 +250,23 @@ function formatCOP(n) {
     style: "currency", currency: "COP",
     minimumFractionDigits: 0, maximumFractionDigits: 0,
   }).format(Math.abs(n));
+}
+
+// ── Merchant key normalization ────────────────────────────────────────────────
+const _MK_NOISE = new Set([
+  "CO","COL","BOGOTA","BOGOTÁ","MEDELLIN","MEDELLÍN",
+  "CALI","BARRANQUILLA","CARTAGENA","SAS","LTDA","SA",
+  "DE","EL","LA","LOS","LAS",
+]);
+
+function merchantKey(desc) {
+  return desc.toUpperCase().trim()
+    .replace(/\.(COM|NET|ORG|CO|IO|APP)\b/g, "")
+    .replace(/[*#@.]/g, " ")
+    .replace(/\b\d{3,}\b/g, "")
+    .split(/\s+/)
+    .filter(t => t.length > 1 && !_MK_NOISE.has(t))
+    .join(" ");
 }
 
 // ── Seguridad: escape HTML y helpers ──────────────────────────────────────────
@@ -971,7 +1011,8 @@ function exportCSV() {
 
 // ── Category learning (backed by API) ─────────────────────────────────────────
 function learnRule(description, categories) {
-  const key = description.toUpperCase().trim();
+  const key = merchantKey(description);
+  if (!key) return;
   learnedRulesCache[key] = categories;
   apiFetch("/api/rules", {
     method:  "PUT",
@@ -983,10 +1024,34 @@ function learnRule(description, categories) {
 function applyLearnedRules(txns) {
   const entries = Object.entries(learnedRulesCache);
   if (entries.length === 0) return txns;
+
+  // Pre-compute normalized rules; keep raw key for legacy fallback
+  const rules = entries.map(([k, cats]) => ({
+    raw: k,
+    norm: merchantKey(k),
+    tokens: merchantKey(k).split(" ").filter(Boolean),
+    cats,
+  })).filter(r => r.tokens.length > 0);
+
   return txns.map(t => {
-    const desc  = t.description.toUpperCase().trim();
-    const match = entries.find(([k]) => desc === k || desc.includes(k) || k.includes(desc));
-    return match ? { ...t, categories: match[1] } : t;
+    const txnNorm = merchantKey(t.description);
+
+    // 1. Exact normalized match
+    const exact = rules.find(r => r.norm === txnNorm);
+    if (exact) return { ...t, categories: exact.cats };
+
+    // 2. Token subset: all rule tokens present in txn key (most specific wins)
+    const candidates = rules
+      .filter(r => r.tokens.every(tok => txnNorm.includes(tok)))
+      .sort((a, b) => b.tokens.length - a.tokens.length);
+    if (candidates.length > 0) return { ...t, categories: candidates[0].cats };
+
+    // 3. Legacy fallback for old-format keys (raw description strings)
+    const rawDesc = t.description.toUpperCase().trim();
+    const legacy = entries.find(([k]) => rawDesc === k || rawDesc.includes(k) || k.includes(rawDesc));
+    if (legacy) return { ...t, categories: legacy[1] };
+
+    return t;
   });
 }
 

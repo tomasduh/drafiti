@@ -64,7 +64,8 @@ class HistoryEntry(Base):
     total: Mapped[float] = mapped_column(Float, default=0)
     summary_json: Mapped[dict] = mapped_column(JSON, default=dict)
     transactions_json: Mapped[list] = mapped_column(JSON, default=list)
-    sort_key: Mapped[int] = mapped_column(BigInteger, default=0)
+    sort_key:  Mapped[int]       = mapped_column(BigInteger, default=0)
+    file_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     user: Mapped["User"] = relationship(back_populates="history_entries")
 
