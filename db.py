@@ -46,10 +46,17 @@ class User(Base):
     )
 
 
+class RevokedToken(Base):
+    __tablename__ = "revoked_tokens"
+
+    jti:        Mapped[str]      = mapped_column(String(36), primary_key=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class HistoryEntry(Base):
     __tablename__ = "history_entries"
 
-    id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     filename: Mapped[str] = mapped_column(String(255))
     fecha_corte: Mapped[str | None] = mapped_column(String(60), nullable=True)

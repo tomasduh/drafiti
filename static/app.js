@@ -57,7 +57,7 @@ function saveCustomCategory(name, icon) {
   const color = COLOR_PALETTE[selectedColorIdx];
   const cat   = { name, icon, bg: color.bg, text: color.text, custom: true };
   customCats.push(cat);
-  fetch("/api/categories", {
+  apiFetch("/api/categories", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, icon, bg: color.bg, text: color.text }),
@@ -66,7 +66,7 @@ function saveCustomCategory(name, icon) {
 
 function deleteCustomCategory(name) {
   customCats = customCats.filter(c => c.name !== name);
-  fetch(`/api/categories/${encodeURIComponent(name)}`, { method: "DELETE" });
+  apiFetch(`/api/categories/${encodeURIComponent(name)}`, { method: "DELETE" });
   allTxns.forEach(t => {
     t.categories = t.categories.filter(c => c !== name);
     if (t.categories.length === 0) t.categories = ["Otros"];
@@ -84,28 +84,40 @@ function loadHistory() {
 }
 
 async function saveToHistory(filename, data) {
-  const id   = Date.now().toString();
-  const type = data.statement_type || "credito";
+  const type  = data.statement_type || "credito";
   const total = type === "debito"
     ? data.transactions.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0)
     : data.transactions.filter(t => t.amount > 0).reduce((s, t) => s + ((t.cargos_mes != null) ? t.cargos_mes : t.amount), 0);
-  const entry = {
-    id,
+
+  const payload = {
     filename,
-    uploadedAt:  new Date().toLocaleDateString("es-CO"),
-    fecha_corte: data.summary?.fecha_corte || data.summary?.periodo || "",
+    fecha_corte:  data.summary?.fecha_corte || data.summary?.periodo || "",
     total,
     transactions: data.transactions.map(t => ({ ...t, categories: [t.category] })),
     summary:      data.summary || {},
   };
-  historyCache.unshift(entry);
-  if (historyCache.length > 20) historyCache.length = 20;
 
-  await fetch("/api/history", {
+  const res = await apiFetch("/api/history", {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify(entry),
+    body:    JSON.stringify(payload),
   });
+  if (!res || !res.ok) return null;
+
+  const result = await res.json();
+  const id     = result.id;
+
+  const entry = {
+    id,
+    filename,
+    uploadedAt:  new Date().toLocaleDateString("es-CO"),
+    fecha_corte: payload.fecha_corte,
+    total,
+    transactions: payload.transactions,
+    summary:      payload.summary,
+  };
+  historyCache.unshift(entry);
+  if (historyCache.length > 20) historyCache.length = 20;
   return id;
 }
 
@@ -118,7 +130,7 @@ function persistCurrentState() {
     ? allTxns.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0)
     : allTxns.filter(t => t.amount > 0).reduce((s, t) => s + chargedAmount(t), 0);
 
-  fetch(`/api/history/${currentHistoryId}`, {
+  apiFetch(`/api/history/${currentHistoryId}`, {
     method:  "PUT",
     headers: { "Content-Type": "application/json" },
     body:    JSON.stringify({ transactions: entry.transactions, total: entry.total }),
@@ -127,8 +139,8 @@ function persistCurrentState() {
 
 function deleteFromHistory(id) {
   historyCache = historyCache.filter(h => h.id !== id);
-  fetch(`/api/history/${id}`, { method: "DELETE" });
-  renderHistory();
+  apiFetch(`/api/history/${id}`, { method: "DELETE" });
+  renderDocuments();
 }
 
 function loadFromHistory(id) {
@@ -147,31 +159,54 @@ function loadFromHistory(id) {
   renderResults();
 }
 
-function renderHistory() {
-  const section = document.getElementById("history-section");
+function renderDocuments() {
+  const section = document.getElementById("documents-section");
   const history = loadHistory();
-  if (history.length === 0) { section.classList.add("hidden"); return; }
-  section.classList.remove("hidden");
+
+  if (history.length === 0) {
+    section.innerHTML = `
+      <div class="docs-page">
+        <div class="docs-empty">
+          <div class="docs-empty-icon">📄</div>
+          <h3 class="docs-empty-title">Sin extractos aún</h3>
+          <p class="docs-empty-sub">Sube tu primer extracto bancario para comenzar a ver tus gastos</p>
+          <button class="btn-primary" onclick="openUploadModal()">Subir primer extracto</button>
+        </div>
+      </div>`;
+    return;
+  }
+
   section.innerHTML = `
-    <div class="history-heading">
-      <span>Extractos anteriores</span>
-      <span>${history.length} guardado${history.length !== 1 ? "s" : ""}</span>
-    </div>
-    <div class="history-grid">
-      ${history.map(h => {
-        const hType = h.summary?.statement_type || "credito";
-        const hMeta = ACCOUNT_TYPE_META[hType] || ACCOUNT_TYPE_META.credito;
-        return `
-        <div class="history-card" onclick="loadFromHistory('${h.id}')">
-          <div class="history-icon">${hMeta.icon}</div>
-          <div class="history-info">
-            <div class="history-filename">${h.filename}</div>
-            <div class="history-meta">${h.fecha_corte ? `${h.fecha_corte} · ` : ""}${hMeta.label} · ${h.uploadedAt}</div>
-          </div>
-          <div class="history-amount">${formatCOP(h.total)}</div>
-          <button class="history-del" onclick="event.stopPropagation(); deleteFromHistory('${h.id}')" title="Eliminar">✕</button>
-        </div>`;
-      }).join("")}
+    <div class="docs-page">
+      <div class="docs-page-header">
+        <div>
+          <h2 class="docs-title">Mis extractos</h2>
+          <p class="docs-sub">${history.length} guardado${history.length !== 1 ? "s" : ""}</p>
+        </div>
+        <button class="btn-primary docs-upload-btn" onclick="openUploadModal()">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M7 10V3M4 6l3-3 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 12h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+          Subir extracto
+        </button>
+      </div>
+      <div class="history-grid">
+        ${history.map(h => {
+          const hType = h.summary?.statement_type || "credito";
+          const hMeta = ACCOUNT_TYPE_META[hType] || ACCOUNT_TYPE_META.credito;
+          return `
+          <div class="history-card" onclick="loadFromHistory('${escapeAttr(h.id)}')">
+            <div class="history-icon">${hMeta.icon}</div>
+            <div class="history-info">
+              <div class="history-filename">${escapeHTML(h.filename)}</div>
+              <div class="history-meta">${h.fecha_corte ? `${escapeHTML(h.fecha_corte)} · ` : ""}${hMeta.label} · ${h.uploadedAt}</div>
+            </div>
+            <div class="history-amount">${formatCOP(h.total)}</div>
+            <button class="history-del" onclick="event.stopPropagation(); deleteFromHistory('${escapeAttr(h.id)}')" title="Eliminar">✕</button>
+          </div>`;
+        }).join("")}
+      </div>
     </div>`;
 }
 
@@ -194,8 +229,19 @@ function formatCOP(n) {
   }).format(Math.abs(n));
 }
 
+// ── Seguridad: escape HTML y helpers ──────────────────────────────────────────
+function escapeHTML(s) {
+  if (s == null) return "";
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+}
+function escapeAttr(s) { return escapeHTML(s); }
+function safeColor(s) { return /^#[0-9a-fA-F]{6}$/.test(s) ? s : "#6B7280"; }
+
 // ── Auth helpers ──────────────────────────────────────────────────────────────
 async function apiFetch(url, options = {}) {
+  options.headers = { "X-Drafiti-CSRF": "1", ...(options.headers || {}) };
   const res = await fetch(url, options);
   if (res.status === 401) {
     window.location.href = "/login";
@@ -205,7 +251,7 @@ async function apiFetch(url, options = {}) {
 }
 
 async function logout() {
-  await fetch("/auth/logout", { method: "POST" });
+  await apiFetch("/auth/logout", { method: "POST" });
   window.location.href = "/login";
 }
 
@@ -225,6 +271,7 @@ fileInput.addEventListener("change", e => { if (e.target.files[0]) uploadFile(e.
 let pendingFile = null;
 
 async function uploadFile(file, password = null) {
+  closeUploadModal();
   document.getElementById("upload-error").classList.add("hidden");
   show("loading");
   const form = new FormData();
@@ -236,14 +283,11 @@ async function uploadFile(file, password = null) {
     if (!res.ok) {
       const err = await res.json();
       if (err.detail === "password_required") {
+        pendingFile = file;
+        show(uploadOrigin);
         if (password) {
-          // Wrong password — reopen modal with error
-          pendingFile = file;
-          show("upload-section");
           openPwdModal("Contraseña incorrecta, intenta de nuevo");
         } else {
-          pendingFile = file;
-          show("upload-section");
           openPwdModal();
         }
         return;
@@ -272,7 +316,8 @@ async function uploadFile(file, password = null) {
     activeFilter = "Todos";
     renderResults();
   } catch (e) {
-    show("upload-section");
+    show(uploadOrigin);
+    openUploadModal();
     const errEl = document.getElementById("upload-error");
     errEl.textContent = e.message || "No se pudo procesar el PDF. Intenta de nuevo.";
     errEl.classList.remove("hidden");
@@ -282,12 +327,32 @@ async function uploadFile(file, password = null) {
 
 // ── Visibility ───────────────────────────────────────────────────────────────
 function show(id) {
-  ["upload-section", "loading", "results"].forEach(s =>
+  ["documents-section", "loading", "results"].forEach(s =>
     document.getElementById(s).classList.toggle("hidden", s !== id));
   const isResults = id === "results";
   document.getElementById("header-info").classList.toggle("hidden", !isResults);
   document.getElementById("main-nav").classList.toggle("hidden", !isResults);
-  if (id === "upload-section") renderHistory();
+  document.getElementById("fab-nuevo-pdf").classList.toggle("hidden", !isResults);
+  if (id === "documents-section") renderDocuments();
+}
+
+// ── Upload modal ──────────────────────────────────────────────────────────────
+let uploadOrigin = "documents-section";
+
+function openUploadModal() {
+  uploadOrigin = document.getElementById("results").classList.contains("hidden")
+    ? "documents-section" : "results";
+  document.getElementById("upload-error").classList.add("hidden");
+  document.getElementById("file-input").value = "";
+  document.getElementById("upload-modal").classList.remove("hidden");
+}
+
+function closeUploadModal() {
+  document.getElementById("upload-modal").classList.add("hidden");
+}
+
+function handleUploadOverlayClick(e) {
+  if (e.target.id === "upload-modal") closeUploadModal();
 }
 
 // ── Tab navigation ───────────────────────────────────────────────────────────
@@ -334,8 +399,8 @@ function renderHero() {
   const badge = document.getElementById("account-type-badge");
   if (badge) {
     badge.textContent = `${meta.icon} ${meta.label}`;
-    badge.style.background = meta.color + "18";
-    badge.style.color       = meta.color;
+    badge.style.background = "rgba(255,255,255,0.2)";
+    badge.style.color       = "#fff";
   }
 
   if (statementType === "debito") {
@@ -395,7 +460,7 @@ function renderDebt() {
           : "";
         return `<div class="ds-detail-row">
           <div class="ds-detail-left">
-            <div class="ds-detail-desc">${t.description} ${cuotaTag}</div>
+            <div class="ds-detail-desc">${escapeHTML(t.description)} ${cuotaTag}</div>
             <div class="ds-detail-date">${t.date}</div>
           </div>
           <div class="ds-detail-val">${formatCOP(chargedAmount(t))}</div>
@@ -409,7 +474,7 @@ function renderDebt() {
   document.getElementById("ds-detail-paid").innerHTML = paidTxns.length
     ? paidTxns.map(t => `<div class="ds-detail-row">
         <div class="ds-detail-left">
-          <div class="ds-detail-desc">${t.description}</div>
+          <div class="ds-detail-desc">${escapeHTML(t.description)}</div>
           <div class="ds-detail-date">${t.date}</div>
         </div>
         <div class="ds-detail-val green">+${formatCOP(Math.abs(t.amount))}</div>
@@ -423,7 +488,7 @@ function renderDebt() {
         const pct = Math.round(act / tot * 100);
         return `<div class="ds-detail-row ds-inst-row">
           <div class="ds-detail-left">
-            <div class="ds-detail-desc">${t.description}</div>
+            <div class="ds-detail-desc">${escapeHTML(t.description)}</div>
             <div class="ds-inst-progress">
               <div class="ds-inst-track">
                 <div class="ds-inst-fill" style="width:${pct}%"></div>
@@ -467,7 +532,7 @@ function renderDebitAccount() {
   document.getElementById("da-detail-income").innerHTML = incomeTxns.length
     ? incomeTxns.map(t => `<div class="ds-detail-row">
         <div class="ds-detail-left">
-          <div class="ds-detail-desc">${t.description}</div>
+          <div class="ds-detail-desc">${escapeHTML(t.description)}</div>
           <div class="ds-detail-date">${t.date}</div>
         </div>
         <div class="ds-detail-val green">+${formatCOP(t.amount)}</div>
@@ -477,7 +542,7 @@ function renderDebitAccount() {
   document.getElementById("da-detail-expense").innerHTML = expenseTxns.length
     ? expenseTxns.map(t => `<div class="ds-detail-row">
         <div class="ds-detail-left">
-          <div class="ds-detail-desc">${t.description}</div>
+          <div class="ds-detail-desc">${escapeHTML(t.description)}</div>
           <div class="ds-detail-date">${t.date}</div>
         </div>
         <div class="ds-detail-val">${formatCOP(Math.abs(t.amount))}</div>
@@ -540,7 +605,7 @@ function renderCuotas() {
 
     return `<div class="cuota-row">
       <div>
-        <div class="cuota-desc">${t.description}</div>
+        <div class="cuota-desc">${escapeHTML(t.description)}</div>
         <div class="cuota-meta">${tag} · ${t.date}</div>
         <div class="cuota-track"><div class="cuota-fill" style="width:${pct}%"></div></div>
       </div>
@@ -591,19 +656,19 @@ function renderCatGrid() {
     const pct     = total > 0 ? (d.sum / total * 100).toFixed(1) : 0;
     const isActive = activeFilter === name;
     const deleteBtn = cat.custom
-      ? `<button class="cat-delete" onclick="removeCat(event,'${name}')" title="Eliminar">✕</button>`
+      ? `<button class="cat-delete" onclick="removeCat(event,'${escapeAttr(name)}')" title="Eliminar">✕</button>`
       : "";
     return `
       <div class="cat-card ${isActive ? "active" : ""}"
-        style="--cat-accent:${cat.text}"
-        onclick="setFilter('${name}')">
+        style="--cat-accent:${safeColor(cat.text)}"
+        onclick="setFilter('${escapeAttr(name)}')">
         ${deleteBtn}
         <div class="cat-icon">${cat.icon}</div>
-        <div class="cat-name">${cat.name}</div>
-        <div class="cat-amount" style="color:${cat.text}">${formatCOP(d.sum)}</div>
+        <div class="cat-name">${escapeHTML(cat.name)}</div>
+        <div class="cat-amount" style="color:${safeColor(cat.text)}">${formatCOP(d.sum)}</div>
         <div class="cat-count">${d.count} mov.</div>
         <div class="cat-bar">
-          <div class="cat-bar-fill" style="width:${pct}%;background:${cat.text}"></div>
+          <div class="cat-bar-fill" style="width:${pct}%;background:${safeColor(cat.text)}"></div>
         </div>
         <div class="cat-pct">${pct}% del total</div>
       </div>`;
@@ -654,9 +719,9 @@ function renderFilters() {
     }
     const cat = getCat(name);
     return `<button class="chip ${active ? "active" : ""}"
-      style="background:${active ? cat.bg : "var(--surface)"};color:${active ? cat.text : "var(--muted)"}"
-      onclick="setFilter('${name}')">
-      <span class="chip-icon">${cat.icon}</span>${cat.name}
+      style="background:${active ? safeColor(cat.bg) : "var(--surface)"};color:${active ? safeColor(cat.text) : "var(--muted)"}"
+      onclick="setFilter('${escapeAttr(name)}')">
+      <span class="chip-icon">${cat.icon}</span>${escapeHTML(cat.name)}
     </button>`;
   }).join("");
 }
@@ -751,9 +816,9 @@ function renderTable() {
 
     const badges = t.categories.map(name => {
       const c = getCat(name);
-      return `<span class="badge" style="background:${c.bg};color:${c.text}"
+      return `<span class="badge" style="background:${safeColor(c.bg)};color:${safeColor(c.text)}"
         onclick="openModal(${idx})" title="Editar categorías">
-        <span class="badge-icon">${c.icon}</span>${c.name}
+        <span class="badge-icon">${c.icon}</span>${escapeHTML(c.name)}
       </span>`;
     }).join("") +
     `<span class="badge-add" onclick="openModal(${idx})" title="Añadir categoría">+</span>`;
@@ -764,10 +829,10 @@ function renderTable() {
           onchange="toggleSelect(${idx})" onclick="event.stopPropagation()" />
       </td>
       <td class="avatar-cell">
-        <div class="avatar" style="background:${firstCat.bg};color:${firstCat.text}">${initial}</div>
+        <div class="avatar" style="background:${safeColor(firstCat.bg)};color:${safeColor(firstCat.text)}">${escapeHTML(initial)}</div>
       </td>
       <td>
-        <div class="desc-name">${t.description}</div>
+        <div class="desc-name">${escapeHTML(t.description)}</div>
         <div class="desc-date">${t.date}</div>
       </td>
       <td><div class="badges">${badges}</div></td>
@@ -791,10 +856,10 @@ function renderModalCats() {
     cats.map(cat => {
       const sel = pendingCats.includes(cat.name);
       return `<button class="modal-cat-btn ${sel ? "selected" : ""}"
-        style="background:${cat.bg};color:${cat.text}"
-        onclick="togglePendingCat('${cat.name}')">
+        style="background:${safeColor(cat.bg)};color:${safeColor(cat.text)}"
+        onclick="togglePendingCat('${escapeAttr(cat.name)}')">
         <span style="font-size:18px">${cat.icon}</span>
-        <span>${cat.name}</span>
+        <span>${escapeHTML(cat.name)}</span>
         <span class="modal-cat-check">${sel ? "✓" : ""}</span>
       </button>`;
     }).join("") +
@@ -908,7 +973,7 @@ function exportCSV() {
 function learnRule(description, categories) {
   const key = description.toUpperCase().trim();
   learnedRulesCache[key] = categories;
-  fetch("/api/rules", {
+  apiFetch("/api/rules", {
     method:  "PUT",
     headers: { "Content-Type": "application/json" },
     body:    JSON.stringify({ key, categories }),
@@ -961,7 +1026,7 @@ function resetApp() {
   selectedTxns.clear(); isBulkMode = false;
   document.getElementById("file-input").value   = "";
   document.getElementById("search-input").value = "";
-  show("upload-section");
+  show("documents-section");
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -987,7 +1052,7 @@ async function init() {
   learnedRulesCache = rulesData;
   historyCache      = historyData;
 
-  renderHistory();
+  show("documents-section");
 }
 
 init();

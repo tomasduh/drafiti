@@ -1,0 +1,9 @@
+client_secret*.json
+*.db
+.env
+*.env
+.git
+__pycache__
+*.pyc
+.claude
+start.bat

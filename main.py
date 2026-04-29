@@ -3,18 +3,49 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Dep
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, JSONResponse, FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 import pdfplumber
 import re
 import io
 import os
+import asyncio
+import uuid as _uuid
+import logging
+from datetime import datetime, timezone
 from typing import Optional
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
-from db import init_db, get_db, SessionLocal, User, HistoryEntry, LearnedRule, CustomCategory
+from db import init_db, get_db, SessionLocal, User, HistoryEntry, LearnedRule, CustomCategory, RevokedToken
 import auth
 
-ADMIN_EMAIL    = os.environ.get("ADMIN_EMAIL",    "tomasduh421@gmail.com")
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "tomasduh")
+logger = logging.getLogger(__name__)
+
+_RAW_ADMIN_EMAIL    = os.environ.get("ADMIN_EMAIL", "")
+_RAW_ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "")
+if auth.is_secure() and (not _RAW_ADMIN_EMAIL or not _RAW_ADMIN_USERNAME):
+    raise RuntimeError("ADMIN_EMAIL y ADMIN_USERNAME deben estar configurados en producción")
+ADMIN_EMAIL    = _RAW_ADMIN_EMAIL    or "tomasduh421@gmail.com"
+ADMIN_USERNAME = _RAW_ADMIN_USERNAME or "tomasduh"
+
+# ── Sanitización ──────────────────────────────────────────────────────────────
+_HEX_RE  = re.compile(r"^#[0-9a-fA-F]{6}$")
+_NAME_RE = re.compile(r"^[\w\sáéíóúñÁÉÍÓÚÑ&\-]{1,40}$")
+
+def sanitize_text(s: str, max_len: int = 255) -> str:
+    return re.sub(r"[<>\"']", "", str(s))[:max_len]
+
+# ── Rate limiting ─────────────────────────────────────────────────────────────
+def _extract_key(request: Request) -> str:
+    token = auth.get_token_from_request(request)
+    if token:
+        user_id, _ = auth.decode_session_token(token)
+        if user_id:
+            return f"user:{user_id}"
+    return f"ip:{get_remote_address(request)}"
+
+limiter = Limiter(key_func=get_remote_address)
 
 # ── Startup ───────────────────────────────────────────────────────────────────
 
@@ -22,6 +53,7 @@ ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "tomasduh")
 async def lifespan(app: FastAPI):
     await init_db()
     await _ensure_admin()
+    await _cleanup_revoked_tokens()
     yield
 
 
@@ -33,7 +65,48 @@ async def _ensure_admin():
             await db.commit()
 
 
+async def _cleanup_revoked_tokens():
+    async with SessionLocal() as db:
+        now = datetime.now(timezone.utc)
+        await db.execute(delete(RevokedToken).where(RevokedToken.expires_at < now))
+        await db.commit()
+
+
 app = FastAPI(title="Drafiti", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# ── Security headers ──────────────────────────────────────────────────────────
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"]   = "nosniff"
+    response.headers["X-Frame-Options"]          = "DENY"
+    response.headers["Referrer-Policy"]          = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"]       = "geolocation=(), microphone=(), camera=()"
+    response.headers["Content-Security-Policy"]  = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: https://lh3.googleusercontent.com; "
+        "connect-src 'self' https://accounts.google.com; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self' https://accounts.google.com"
+    )
+    if auth.is_secure():
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
+# ── CSRF check ────────────────────────────────────────────────────────────────
+@app.middleware("http")
+async def csrf_check(request: Request, call_next):
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        if request.headers.get("x-drafiti-csrf") != "1":
+            return JSONResponse({"detail": "Solicitud no válida"}, status_code=403)
+    return await call_next(request)
 
 # ── Auth dependency ───────────────────────────────────────────────────────────
 
@@ -43,9 +116,13 @@ async def get_current_user(
     token = auth.get_token_from_request(request)
     if not token:
         raise HTTPException(401, "No autenticado")
-    user_id = auth.decode_session_token(token)
+    user_id, jti = auth.decode_session_token(token)
     if not user_id:
         raise HTTPException(401, "Sesión inválida")
+    if jti:
+        rev = await db.execute(select(RevokedToken).where(RevokedToken.jti == jti))
+        if rev.scalar_one_or_none():
+            raise HTTPException(401, "Sesión cerrada")
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -66,19 +143,43 @@ async def login_page():
 
 
 @app.get("/auth/login")
-async def auth_login():
-    return RedirectResponse(auth.google_auth_url_build())
+async def auth_login(remember: str = "0"):
+    url, state_value = auth.google_auth_url_build(remember=(remember == "1"))
+    response = RedirectResponse(url)
+    response.set_cookie(
+        auth.STATE_COOKIE_NAME, state_value,
+        httponly=True,
+        secure=auth.is_secure(),
+        samesite="lax",
+        max_age=600,
+    )
+    return response
 
 
 @app.get("/auth/callback")
-async def auth_callback(code: str = "", error: str = "", db: AsyncSession = Depends(get_db)):
-    if error or not code:
-        return RedirectResponse("/login?error=oauth")
+@limiter.limit("20/hour")
+async def auth_callback(
+    request: Request,
+    code: str = "",
+    error: str = "",
+    state: str = "",
+    db: AsyncSession = Depends(get_db),
+):
+    state_cookie = request.cookies.get(auth.STATE_COOKIE_NAME, "")
+    valid, remember_me = auth.validate_state(state, state_cookie)
+
+    if not valid or error or not code:
+        response = RedirectResponse("/login?error=oauth")
+        response.delete_cookie(auth.STATE_COOKIE_NAME)
+        return response
+
     try:
         tokens   = await auth.exchange_code(code)
         userinfo = await auth.get_userinfo(tokens["access_token"])
     except Exception:
-        return RedirectResponse("/login?error=oauth")
+        response = RedirectResponse("/login?error=oauth")
+        response.delete_cookie(auth.STATE_COOKIE_NAME)
+        return response
 
     email      = userinfo.get("email", "")
     google_sub = userinfo.get("sub", "")
@@ -94,45 +195,56 @@ async def auth_callback(code: str = "", error: str = "", db: AsyncSession = Depe
             await db.commit()
 
     if not user:
-        return RedirectResponse("/login?error=not_registered")
+        response = RedirectResponse("/login?error=not_registered")
+        response.delete_cookie(auth.STATE_COOKIE_NAME)
+        return response
 
-    token    = auth.create_session_token(user.id)
+    token, _jti  = auth.create_session_token(user.id, remember_me)
     response = RedirectResponse("/")
     response.set_cookie(
         auth.COOKIE_NAME, token,
         httponly=True,
         secure=auth.is_secure(),
-        samesite="lax",
-        max_age=auth.TOKEN_EXPIRE_DAYS * 86400,
+        samesite="strict",
+        max_age=auth.token_max_age(remember_me),
     )
+    response.delete_cookie(auth.STATE_COOKIE_NAME)
     return response
 
 
 @app.post("/auth/logout")
-async def auth_logout():
+async def auth_logout(request: Request, db: AsyncSession = Depends(get_db)):
+    token = auth.get_token_from_request(request)
+    if token:
+        _uid, jti = auth.decode_session_token(token)
+        if jti:
+            expires_at = auth.get_token_expiry(token)
+            if expires_at:
+                db.add(RevokedToken(jti=jti, expires_at=expires_at))
+                await db.commit()
     response = JSONResponse({"ok": True})
-    response.delete_cookie(auth.COOKIE_NAME)
+    response.delete_cookie(auth.COOKIE_NAME, samesite="strict")
     return response
 
 
-DEV_BYPASS_AUTH = os.environ.get("DEV_BYPASS_AUTH", "").lower() == "true"
+_DEV_ONLY = os.environ.get("DEV_ONLY", "").lower() == "true"
 
 @app.get("/auth/dev-login")
 async def auth_dev_login(db: AsyncSession = Depends(get_db)):
-    if not DEV_BYPASS_AUTH:
+    if not _DEV_ONLY or auth.is_secure():
         raise HTTPException(404, "Not found")
     result = await db.execute(select(User).where(User.email == ADMIN_EMAIL))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(500, "Admin user not found")
-    token = auth.create_session_token(user.id)
+    token, _jti = auth.create_session_token(user.id)
     response = RedirectResponse("/")
     response.set_cookie(
         auth.COOKIE_NAME, token,
         httponly=True,
         secure=False,
-        samesite="lax",
-        max_age=auth.TOKEN_EXPIRE_DAYS * 86400,
+        samesite="strict",
+        max_age=auth.TOKEN_EXPIRE_HOURS_SHORT * 3600,
     )
     return response
 
@@ -180,22 +292,24 @@ async def api_save_history(
     user:    User         = Depends(get_current_user),
     db:      AsyncSession = Depends(get_db),
 ):
-    body  = await request.json()
-    entry = HistoryEntry(
-        id               = body["id"],
-        user_id          = user.id,
-        filename         = body["filename"],
-        fecha_corte      = body.get("fecha_corte"),
-        uploaded_at      = body["uploadedAt"],
-        total            = body["total"],
-        summary_json     = body.get("summary", {}),
-        transactions_json= body["transactions"],
-        sort_key         = int(body["id"]),
+    body     = await request.json()
+    entry_id = str(_uuid.uuid4())
+    sort_key = int(datetime.now(timezone.utc).timestamp() * 1000)
+    entry    = HistoryEntry(
+        id                = entry_id,
+        user_id           = user.id,
+        filename          = sanitize_text(body.get("filename", ""), 255),
+        fecha_corte       = body.get("fecha_corte"),
+        uploaded_at       = datetime.now(timezone.utc).strftime("%d/%m/%Y"),
+        total             = body.get("total", 0),
+        summary_json      = body.get("summary", {}),
+        transactions_json = body.get("transactions", []),
+        sort_key          = sort_key,
     )
     db.add(entry)
 
-    # Keep max 20 entries
-    result   = await db.execute(
+    # Keep max 20 entries per user
+    result      = await db.execute(
         select(HistoryEntry)
         .where(HistoryEntry.user_id == user.id)
         .order_by(HistoryEntry.sort_key.desc())
@@ -206,7 +320,7 @@ async def api_save_history(
             await db.delete(old)
 
     await db.commit()
-    return {"ok": True}
+    return {"ok": True, "id": entry_id}
 
 
 @app.put("/api/history/{entry_id}")
@@ -307,17 +421,25 @@ async def api_create_category(
     db:      AsyncSession = Depends(get_db),
 ):
     body = await request.json()
-    name = body["name"]
+    name = str(body.get("name", "")).strip()
+    icon = str(body.get("icon", "")).strip()
+    bg   = str(body.get("bg", "")).strip()
+    text = str(body.get("text", "")).strip()
+
+    if not _NAME_RE.match(name):
+        raise HTTPException(400, "Nombre de categoría inválido")
+    if not _HEX_RE.match(bg) or not _HEX_RE.match(text):
+        raise HTTPException(400, "Color inválido (debe ser #RRGGBB)")
+    if len(icon) > 10:
+        raise HTTPException(400, "Ícono inválido")
+
     result = await db.execute(
         select(CustomCategory)
         .where(CustomCategory.user_id == user.id, CustomCategory.name == name)
     )
     if result.scalar_one_or_none():
         raise HTTPException(400, "Ya existe esa categoría")
-    db.add(CustomCategory(
-        user_id=user.id, name=name,
-        icon=body["icon"], bg=body["bg"], text=body["text"]
-    ))
+    db.add(CustomCategory(user_id=user.id, name=name, icon=icon, bg=bg, text=text))
     await db.commit()
     return {"ok": True}
 
@@ -1073,7 +1195,9 @@ def extract_all(pdf_bytes: bytes, password: str = "") -> dict:
 
 
 @app.post("/api/extract")
+@limiter.limit("50/day", key_func=_extract_key)
 async def api_extract(
+    request:  Request,
     file:     UploadFile    = File(...),
     password: Optional[str] = Form(None),
     user:     User          = Depends(get_current_user),
@@ -1081,17 +1205,31 @@ async def api_extract(
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "Solo se aceptan archivos PDF")
     content = await file.read()
+    if not content.startswith(b"%PDF-"):
+        raise HTTPException(400, "El archivo no es un PDF válido")
     try:
-        result = extract_all(content, password=password or "")
+        result = await asyncio.wait_for(
+            asyncio.to_thread(extract_all, content, password or ""),
+            timeout=30.0,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(408, "El PDF tardó demasiado. Intenta con un archivo más pequeño.")
     except ValueError as e:
         if "password_required" in str(e):
             raise HTTPException(422, "password_required")
-        raise HTTPException(500, f"Error procesando el PDF: {e}")
-    except Exception as e:
-        raise HTTPException(500, f"Error procesando el PDF: {e}")
+        logger.exception("PDF extraction ValueError")
+        raise HTTPException(500, "No se pudo procesar el PDF")
+    except Exception:
+        logger.exception("PDF extraction error")
+        raise HTTPException(500, "No se pudo procesar el PDF")
     if not result["transactions"]:
         raise HTTPException(400, "No se encontraron transacciones en el PDF")
     return result
+
+
+@app.get("/health")
+async def health():
+    return {"ok": True}
 
 
 @app.get("/admin")

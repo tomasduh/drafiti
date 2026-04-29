@@ -29,11 +29,11 @@
 
   <div class="header-right">
     <div id="header-info" class="header-info hidden">
-      <span id="txn-count" class="txn-pill"></span>
-      <button class="btn-ghost" onclick="resetApp()">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7a5 5 0 1010 0 5 5 0 00-10 0zM7 4v3M7 7l2 2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-        Nuevo PDF
+      <button class="btn-ghost btn-back" onclick="resetApp()">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M8 2L3 6.5 8 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="btn-back-label">Mis extractos</span>
       </button>
+      <span id="txn-count" class="txn-pill"></span>
     </div>
     <div class="user-menu">
       <a class="btn-ghost hidden" id="admin-btn" href="/admin">
@@ -51,35 +51,9 @@
 
 <main>
 
-  <!-- ── Upload ─────────────────────────────── -->
-  <section id="upload-section">
-    <div class="upload-wrap">
-      <div id="drop-zone" class="drop-zone">
-        <div class="drop-glow"></div>
-        <div class="drop-body">
-          <div class="upload-icon-ring">
-            <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
-              <path d="M18 24V12M12 18l6-6 6 6" stroke="#5C6BC0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M8 28h20" stroke="#5C6BC0" stroke-width="2.2" stroke-linecap="round"/>
-            </svg>
-          </div>
-          <h2>Sube tu extracto</h2>
-          <p>Arrastra el PDF aquí o haz clic para buscarlo</p>
-          <input type="file" id="file-input" accept=".pdf" hidden />
-          <button class="btn-primary" id="select-file-btn">
-            Seleccionar PDF
-          </button>
-          <div id="upload-error" class="upload-error hidden"></div>
-        </div>
-      </div>
-      <div class="features-row">
-        <div class="feat">🧾 Extracción automática</div>
-        <div class="feat">🏷️ Categorías inteligentes</div>
-        <div class="feat">💳 Deuda y cuotas</div>
-        <div class="feat">📤 Exportar CSV</div>
-      </div>
-    </div>
-    <div id="history-section" class="history-section hidden"></div>
+  <!-- ── Documents (home) ─────────────────────────────── -->
+  <section id="documents-section">
+    <!-- Rendered by renderDocuments() -->
   </section>
 
   <!-- ── Loading ─────────────────────────────── -->
@@ -337,6 +311,47 @@
     </div>
   </div>
 </div>
+
+<!-- Upload modal -->
+<div id="upload-modal" class="modal-overlay hidden" onclick="handleUploadOverlayClick(event)">
+  <div class="upload-modal-box">
+    <div class="upload-modal-header">
+      <span class="upload-modal-title">Subir extracto</span>
+      <button class="modal-close" onclick="closeUploadModal()">✕</button>
+    </div>
+    <div id="drop-zone" class="drop-zone">
+      <div class="drop-glow"></div>
+      <div class="drop-body">
+        <div class="upload-icon-ring">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <path d="M18 24V12M12 18l6-6 6 6" stroke="#5C6BC0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M8 28h20" stroke="#5C6BC0" stroke-width="2.2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <h2>Sube tu extracto</h2>
+        <p>Arrastra el PDF aquí o haz clic para buscarlo</p>
+        <input type="file" id="file-input" accept=".pdf" hidden />
+        <button class="btn-primary" id="select-file-btn">Seleccionar PDF</button>
+        <div id="upload-error" class="upload-error hidden"></div>
+      </div>
+    </div>
+    <div class="features-row upload-modal-features">
+      <div class="feat">🧾 Extracción automática</div>
+      <div class="feat">🏷️ Categorías inteligentes</div>
+      <div class="feat">💳 Deuda y cuotas</div>
+      <div class="feat">📤 Exportar CSV</div>
+    </div>
+  </div>
+</div>
+
+<!-- FAB: Nuevo PDF -->
+<button id="fab-nuevo-pdf" class="fab hidden" onclick="openUploadModal()">
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <path d="M8 11V5M5 8l3-3 3 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M3 13h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+  </svg>
+  Nuevo PDF
+</button>
 
 <script src="app.js"></script>
 </body>

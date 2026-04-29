@@ -48,6 +48,8 @@ header {
 .logo-text { font-size: 17px; font-weight: 700; color: var(--primary); letter-spacing: -0.3px; }
 
 .header-info { display: flex; align-items: center; gap: 12px; }
+.btn-back { color: var(--muted); }
+.btn-back:hover { color: var(--text); }
 .txn-pill {
   background: var(--primary-light); color: var(--primary);
   font-size: 12px; font-weight: 600;
@@ -84,12 +86,46 @@ header {
 /* ── Main ─────────────────────────────────────── */
 main { max-width: 1100px; margin: 0 auto; padding: 36px 24px 64px; }
 
-/* ── Upload ─────────────────────────────────────── */
-#upload-section {
-  display: flex; flex-direction: column; align-items: center; gap: 40px;
-  padding-top: 48px; padding-bottom: 64px;
-  min-height: calc(100vh - 58px - 72px);
+/* ── Documents section (home) ──────────────────────── */
+#documents-section { padding-top: 36px; padding-bottom: 80px; min-height: calc(100vh - 58px); }
+.docs-page { max-width: 680px; margin: 0 auto; }
+.docs-page-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 24px;
 }
+.docs-title { font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+.docs-sub { font-size: 13px; color: var(--muted); }
+.docs-upload-btn { margin-top: 0; display: inline-flex; align-items: center; gap: 6px; }
+.docs-empty {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; padding: 80px 24px;
+}
+.docs-empty-icon { font-size: 56px; line-height: 1; margin-bottom: 18px; }
+.docs-empty-title { font-size: 18px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.docs-empty-sub { font-size: 13px; color: var(--muted); margin-bottom: 28px; max-width: 280px; line-height: 1.6; }
+
+/* ── Upload modal ─────────────────────────────────── */
+.upload-modal-box {
+  background: var(--surface);
+  border-radius: var(--radius);
+  width: 100%; max-width: 500px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.upload-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.upload-modal-title { font-size: 15px; font-weight: 600; color: var(--text); }
+.upload-modal-box .drop-zone {
+  border-radius: 0; border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 40px;
+}
+.upload-modal-features { padding: 14px 20px; border: none; }
+
+/* ── Upload (shared styles) ─────────────────────────── */
 .upload-wrap { display: flex; flex-direction: column; align-items: center; gap: 20px; width: 100%; max-width: 460px; }
 
 .drop-zone {
@@ -507,6 +543,33 @@ tbody td { padding: 10px 16px; vertical-align: middle; }
   cursor: pointer; display: block; margin: 0 auto;
 }
 
+/* ── FAB: Nuevo PDF ─────────────────────────── */
+.fab {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 99px;
+  padding: 13px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(92, 107, 192, 0.45);
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.fab:hover {
+  background: #4a5ab0;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(92, 107, 192, 0.55);
+}
+.fab:active { transform: translateY(0); }
+
 /* Bulk action bar */
 .bulk-bar {
   position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
@@ -808,6 +871,7 @@ td.avatar-cell { width: 52px; }
   header { padding: 0 14px; height: 52px; }
   .user-name { display: none; }
   .txn-pill { display: none; }
+  .btn-back-label { display: none; }
   .btn-ghost { padding: 8px 10px; font-size: 12px; gap: 4px; }
 
   /* Main */
@@ -901,9 +965,16 @@ td.avatar-cell { width: 52px; }
   /* Debt stats */
   .debt-stats-row { grid-template-columns: 1fr; }
 
-  /* Upload */
-  #upload-section { padding-top: 28px; padding-bottom: 40px; gap: 24px; }
-  .drop-zone { padding: 36px 20px; }
+  /* Documents section */
+  #documents-section { padding-top: 20px; padding-bottom: 100px; }
+  .docs-page-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .docs-empty { padding: 48px 16px; }
+  .docs-empty-icon { font-size: 44px; }
+
+  /* Upload modal as bottom sheet */
+  #upload-modal { align-items: flex-end; padding: 0; }
+  .upload-modal-box { max-width: 100%; border-radius: 20px 20px 0 0; }
+  .upload-modal-box .drop-zone { padding: 28px 20px; }
   .upload-icon-ring { width: 60px; height: 60px; }
   .drop-zone h2 { font-size: 17px; }
 
@@ -920,6 +991,14 @@ td.avatar-cell { width: 52px; }
 
   /* Breakdown card */
   .debt-breakdown-card { padding: 16px; }
+
+  /* FAB: positioned above the fixed bottom nav */
+  .fab {
+    bottom: 72px;
+    right: 16px;
+    padding: 11px 18px;
+    font-size: 13px;
+  }
 }
 
 /* Slightly larger phones/small tablets */
