@@ -52,7 +52,7 @@ class HistoryEntry(Base):
     id: Mapped[str] = mapped_column(String(20), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     filename: Mapped[str] = mapped_column(String(255))
-    fecha_corte: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    fecha_corte: Mapped[str | None] = mapped_column(String(60), nullable=True)
     uploaded_at: Mapped[str] = mapped_column(String(20))
     total: Mapped[float] = mapped_column(Float, default=0)
     summary_json: Mapped[dict] = mapped_column(JSON, default=dict)
