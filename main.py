@@ -8,6 +8,7 @@ import pdfplumber
 import re
 import io
 import os
+import json
 import hashlib
 import asyncio
 import uuid as _uuid
@@ -321,7 +322,6 @@ async def api_get_history(
             "total":        e.total,
             "summary":      e.summary_json,
             "transactions": e.transactions_json,
-            "file_hash":    e.file_hash,
         }
         for e in entries
     ]
@@ -339,29 +339,41 @@ async def api_save_history(
 
     # ── Re-upload dedup: same file hash → merge categories, don't create new entry
     if file_hash:
-        result = await db.execute(
-            select(HistoryEntry)
-            .where(HistoryEntry.user_id == user.id, HistoryEntry.file_hash == file_hash)
-        )
-        existing = result.scalar_one_or_none()
-        if existing:
-            old_by_key = {
-                f"{t['date']}|{t['description']}|{t['amount']}": t
-                for t in existing.transactions_json
-            }
-            merged = []
+        try:
+            row = await db.execute(
+                text("SELECT id, transactions_json FROM history_entries WHERE user_id=:uid AND file_hash=:fh LIMIT 1"),
+                {"uid": user.id, "fh": file_hash},
+            )
+            existing_row = row.fetchone()
+        except Exception:
+            existing_row = None  # column may not exist yet
+
+        if existing_row:
+            old_txns   = existing_row[1] if isinstance(existing_row[1], list) else []
+            old_by_key = {f"{t['date']}|{t['description']}|{t['amount']}": t for t in old_txns}
+            merged     = []
             for t in new_txns:
                 key = f"{t['date']}|{t['description']}|{t['amount']}"
                 old = old_by_key.get(key)
                 merged.append({**t, "categories": old["categories"]} if old else t)
-            existing.transactions_json = merged
-            existing.summary_json      = body.get("summary", {})
-            existing.total             = body.get("total", 0)
-            existing.filename          = sanitize_text(body.get("filename", ""), 255)
-            existing.fecha_corte       = body.get("fecha_corte")
-            existing.sort_key          = int(datetime.now(timezone.utc).timestamp() * 1000)
+            sort_key = int(datetime.now(timezone.utc).timestamp() * 1000)
+            await db.execute(
+                text("""UPDATE history_entries
+                        SET transactions_json=:txns, summary_json=:summary,
+                            total=:total, filename=:fname, fecha_corte=:fc, sort_key=:sk
+                        WHERE id=:eid"""),
+                {
+                    "txns":    json.dumps(merged),
+                    "summary": json.dumps(body.get("summary", {})),
+                    "total":   body.get("total", 0),
+                    "fname":   sanitize_text(body.get("filename", ""), 255),
+                    "fc":      body.get("fecha_corte"),
+                    "sk":      sort_key,
+                    "eid":     existing_row[0],
+                },
+            )
             await db.commit()
-            return {"ok": True, "id": existing.id}
+            return {"ok": True, "id": existing_row[0]}
 
     entry_id = str(_uuid.uuid4())
     sort_key = int(datetime.now(timezone.utc).timestamp() * 1000)
@@ -375,9 +387,19 @@ async def api_save_history(
         summary_json      = body.get("summary", {}),
         transactions_json = new_txns,
         sort_key          = sort_key,
-        file_hash         = file_hash,
     )
     db.add(entry)
+    await db.flush()  # get the entry into the session before raw update
+
+    # Store file_hash via raw SQL so it works even if column was just added
+    if file_hash:
+        try:
+            await db.execute(
+                text("UPDATE history_entries SET file_hash=:fh WHERE id=:eid"),
+                {"fh": file_hash, "eid": entry_id},
+            )
+        except Exception:
+            pass  # column may not exist yet on first deploy
 
     # Keep max 20 entries per user
     result      = await db.execute(
