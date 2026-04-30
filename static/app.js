@@ -690,7 +690,7 @@ function renderCatGrid() {
   cats.filter(c => c.custom && !usedNames.has(c.name))
       .forEach(c => used.push([c.name, { sum: 0, count: 0 }]));
 
-  const visible = used.filter(([, d]) => d.sum > 0);
+  const visible = used.filter(([, d]) => d.count > 0 && d.sum >= 1);
 
   const grid = document.getElementById("cat-grid");
   grid.innerHTML = visible.map(([name, d]) => {
