@@ -79,18 +79,22 @@ async def lifespan(app: FastAPI):
 
 async def _migrate_db():
     from db import engine as _engine
+    is_pg = "postgresql" in str(_engine.url)
     async with _engine.begin() as conn:
-        try:
-            if "postgresql" in str(_engine.url):
-                await conn.execute(text(
-                    "ALTER TABLE history_entries ADD COLUMN IF NOT EXISTS file_hash VARCHAR(64)"
-                ))
-            else:
+        if is_pg:
+            # PostgreSQL: IF NOT EXISTS is safe and idempotent
+            await conn.execute(text(
+                "ALTER TABLE history_entries ADD COLUMN IF NOT EXISTS file_hash VARCHAR(64)"
+            ))
+        else:
+            # SQLite: check if column exists first to avoid error
+            rows = await conn.execute(text("PRAGMA table_info(history_entries)"))
+            cols = {row[1] for row in rows}
+            if "file_hash" not in cols:
                 await conn.execute(text(
                     "ALTER TABLE history_entries ADD COLUMN file_hash VARCHAR(64)"
                 ))
-        except Exception:
-            pass  # columna ya existe
+    logger.info("_migrate_db: OK")
 
 
 async def _ensure_admin():
