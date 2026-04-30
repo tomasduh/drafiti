@@ -83,12 +83,19 @@ async def _migrate_db():
     is_pg = "postgresql" in str(_engine.url)
     async with _engine.begin() as conn:
         if is_pg:
-            # PostgreSQL: IF NOT EXISTS is safe and idempotent
+            # Widen id column: was VARCHAR(20) from Date.now() era, needs 36 for UUIDs
+            await conn.execute(text(
+                "ALTER TABLE history_entries ALTER COLUMN id TYPE VARCHAR(36)"
+            ))
+            # Widen filename just in case it was also created narrow
+            await conn.execute(text(
+                "ALTER TABLE history_entries ALTER COLUMN filename TYPE VARCHAR(255)"
+            ))
+            # Add file_hash if missing
             await conn.execute(text(
                 "ALTER TABLE history_entries ADD COLUMN IF NOT EXISTS file_hash VARCHAR(64)"
             ))
         else:
-            # SQLite: check if column exists first to avoid error
             rows = await conn.execute(text("PRAGMA table_info(history_entries)"))
             cols = {row[1] for row in rows}
             if "file_hash" not in cols:
