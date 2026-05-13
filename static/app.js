@@ -420,7 +420,7 @@ function renderDocuments() {
     section.innerHTML = `
       <div class="docs-page">
         <div class="docs-empty">
-          <div class="docs-empty-icon">📄</div>
+          <div class="docs-empty-icon"><svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="10" y="6" width="44" height="56" rx="6" fill="#EEF0FB"/><rect x="10" y="6" width="44" height="56" rx="6" stroke="#C7D2FE" stroke-width="1.5"/><path d="M38 6L54 22H38V6Z" fill="#C7D2FE"/><rect x="18" y="30" width="28" height="3" rx="1.5" fill="#94A3B8"/><rect x="18" y="38" width="28" height="3" rx="1.5" fill="#CBD5E1"/><rect x="18" y="46" width="18" height="3" rx="1.5" fill="#CBD5E1"/><circle cx="62" cy="62" r="14" fill="#5C6BC0"/><path d="M56 62l4.5 4.5L68 57" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <h3 class="docs-empty-title">${t("no_statements")}</h3>
           <p class="docs-empty-sub">${t("no_statements_sub")}</p>
           <button class="btn-primary" onclick="openUploadModal()">${t("upload_first")}</button>
@@ -676,8 +676,10 @@ function renderHero() {
   const badge = document.getElementById("account-type-badge");
   if (badge) {
     badge.textContent = `${meta.icon} ${meta.label}`;
-    badge.style.background = "rgba(255,255,255,0.2)";
-    badge.style.color       = "#fff";
+    badge.style.background    = "rgba(255,255,255,0.2)";
+    badge.style.color         = "#fff";
+    badge.style.backdropFilter = "blur(4px)";
+    badge.style.border        = "1px solid rgba(255,255,255,0.25)";
   }
 
   if (statementType === "debito") {
