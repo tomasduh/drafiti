@@ -1001,6 +1001,35 @@ td.avatar-cell { width: 52px; }
   }
 }
 
+/* ── Language toggle ────────────────────────────────────── */
+.lang-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 2px;
+  border: 1px solid var(--border);
+}
+.lang-btn {
+  padding: 3px 9px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  letter-spacing: 0.04em;
+}
+.lang-btn.active {
+  background: var(--fg, #111827);
+  color: var(--bg);
+}
+.lang-btn:hover:not(.active) {
+  color: var(--text);
+}
+
 /* Slightly larger phones/small tablets */
 @media (max-width: 380px) {
   .cat-grid { grid-template-columns: 1fr 1fr; gap: 6px; }

@@ -19,6 +19,236 @@ const BUILTIN = [
   { name: "Otros",            icon: "📦", bg: "#F3F4F6", text: "#374151" },
 ];
 
+// ── Internationalisation ─────────────────────────────────────────────────────
+const LANGS = {
+  es: {
+    tab_gastos:            "Gastos",
+    tab_deuda:             "Deuda",
+    tab_cuenta:            "Cuenta",
+    nav_my_statements:     "Mis extractos",
+    nav_users:             "Usuarios",
+    nav_logout:            "Salir",
+    extracting:            "Extrayendo transacciones…",
+    label_charged:         "Cobrado este período",
+    label_expenses:        "Gastos este período",
+    movements:             n => `${n} movimientos`,
+    expenses_income:       (e, i) => `${e} gastos · ${i} ingresos`,
+    txns_credits:          (t, c) => `${t} transacciones · ${c} créditos`,
+    by_category:           "Por categoría",
+    click_to_filter:       "Haz clic para filtrar",
+    transactions:          "Transacciones",
+    search_placeholder:    "Buscar…",
+    th_merchant:           "Comercio",
+    th_category:           "Categoría",
+    th_charged:            "Cobrado",
+    filter_all:            "Todos",
+    new_category:          "Nueva categoría",
+    pct_total:             p => `${p}% del total`,
+    n_movements:           n => `${n} mov.`,
+    no_statements:         "Sin extractos aún",
+    no_statements_sub:     "Sube tu primer extracto bancario para comenzar a ver tus gastos",
+    upload_first:          "Subir primer extracto",
+    my_statements:         "Mis extractos",
+    n_saved:               n => `${n} guardado${n !== 1 ? "s" : ""}`,
+    upload_statement:      "Subir extracto",
+    what_i_owe:            "Lo que debo",
+    what_i_paid:           "Lo que he pagado",
+    what_im_paying:        "Lo que estoy pagando",
+    payments_period:       "Abonos este período",
+    charged_this_month:    "Cobrado este mes",
+    future_commitments:    "Compromisos futuros (cuotas)",
+    simulate_payment:      "💸 Simular pago después del corte",
+    active_installments:   "Cuotas activas",
+    no_active_installments:"Sin cuotas activas",
+    n_active_plans:        n => `${n} plan${n !== 1 ? "es" : ""} en curso`,
+    plans_pending:         (n, a) => `${n} planes activos · ${a} pendiente`,
+    no_charges:            "Sin cargos",
+    no_payments:           "Sin pagos registrados",
+    pending:               "pendiente",
+    expires:               "Vence",
+    min_payment:           "Pago mínimo",
+    statement_breakdown:   "Desglose del extracto",
+    month_breakdown:       "Desglose del mes",
+    final_balance:         "Saldo final",
+    income_came_in:        "Lo que entró",
+    income_period:         "Ingresos del período",
+    expenses_went_out:     "Lo que salió",
+    expenses_period:       "Gastos del período",
+    income:                "Ingresos",
+    expenses_label:        "Gastos",
+    earned_returns:        "💰 Rendimientos ganados",
+    no_income:             "Sin ingresos",
+    no_expenses:           "Sin gastos",
+    starts_next_month:     "Inicia próximo mes",
+    n_of_n_paid:           (a, b) => `${a} de ${b} pagadas`,
+    n_of_n_installments:   (a, b) => `${a} de ${b} cuotas`,
+    estimated_installment: "cuota estimada",
+    this_month_installment:"cuota este mes",
+    pending_amount:        a => `+${a} pendiente`,
+    debt_paid:             "🎉 ¡Deuda saldada!",
+    remaining_balance:     a => `Saldo restante: ${a}`,
+    no_results:            "Sin resultados para este filtro",
+    n_selected:            n => `${n} transacción${n !== 1 ? "es" : ""} seleccionada${n !== 1 ? "s" : ""}`,
+    change_category:       "Cambiar categoría",
+    cancel:                "Cancelar",
+    save:                  "Guardar",
+    add_cat_to_n:          n => `Agregar categoría a ${n} transacciones (se suma a las existentes)`,
+    pdf_protected:         "PDF protegido",
+    pdf_password_sub:      "Ingresa la contraseña para<br>desbloquear y leer el extracto",
+    pdf_password_placeholder:"Contraseña del PDF",
+    open_pdf:              "Abrir PDF",
+    wrong_password:        "Contraseña incorrecta, intenta de nuevo",
+    upload_title:          "Subir extracto",
+    upload_h2:             "Sube tu extracto",
+    upload_p:              "Arrastra el PDF aquí o haz clic para buscarlo",
+    select_pdf:            "Seleccionar PDF",
+    pdf_error:             "No se pudo procesar el PDF. Verifica que el archivo sea válido.",
+    feat_extract:          "🧾 Extracción automática",
+    feat_cats:             "🏷️ Categorías inteligentes",
+    feat_debt:             "💳 Deuda y cuotas",
+    feat_csv:              "📤 Exportar CSV",
+    new_pdf:               "Nuevo PDF",
+    create_category:       "Crear nueva categoría",
+    category_icon:         "Icono",
+    category_color:        "Color",
+    category_name_placeholder:"Nombre de categoría",
+    create:                "Crear",
+    delete_cat_confirm:    n => `¿Eliminar la categoría "${n}"? Las transacciones quedarán en "Otros".`,
+    account_credit:        "Tarjeta de Crédito",
+    account_debit:         "Cuenta de Ahorros / Débito",
+    confirm_delete:        "Eliminar",
+  },
+  en: {
+    tab_gastos:            "Expenses",
+    tab_deuda:             "Debt",
+    tab_cuenta:            "Account",
+    nav_my_statements:     "My statements",
+    nav_users:             "Users",
+    nav_logout:            "Sign out",
+    extracting:            "Extracting transactions…",
+    label_charged:         "Charged this period",
+    label_expenses:        "Expenses this period",
+    movements:             n => `${n} transactions`,
+    expenses_income:       (e, i) => `${e} expenses · ${i} income`,
+    txns_credits:          (tt, c) => `${tt} transactions · ${c} credits`,
+    by_category:           "By category",
+    click_to_filter:       "Click to filter",
+    transactions:          "Transactions",
+    search_placeholder:    "Search…",
+    th_merchant:           "Merchant",
+    th_category:           "Category",
+    th_charged:            "Amount",
+    filter_all:            "All",
+    new_category:          "New category",
+    pct_total:             p => `${p}% of total`,
+    n_movements:           n => `${n} txns`,
+    no_statements:         "No statements yet",
+    no_statements_sub:     "Upload your first bank statement to start tracking your expenses",
+    upload_first:          "Upload first statement",
+    my_statements:         "My statements",
+    n_saved:               n => `${n} saved`,
+    upload_statement:      "Upload statement",
+    what_i_owe:            "What I owe",
+    what_i_paid:           "What I've paid",
+    what_im_paying:        "What I'm paying",
+    payments_period:       "Payments this period",
+    charged_this_month:    "Charged this month",
+    future_commitments:    "Future commitments (installments)",
+    simulate_payment:      "💸 Simulate payment after cutoff",
+    active_installments:   "Active installments",
+    no_active_installments:"No active installments",
+    n_active_plans:        n => `${n} active plan${n !== 1 ? "s" : ""}`,
+    plans_pending:         (n, a) => `${n} active plans · ${a} pending`,
+    no_charges:            "No charges",
+    no_payments:           "No payments recorded",
+    pending:               "pending",
+    expires:               "Due",
+    min_payment:           "Minimum payment",
+    statement_breakdown:   "Statement breakdown",
+    month_breakdown:       "Monthly breakdown",
+    final_balance:         "Final balance",
+    income_came_in:        "Income",
+    income_period:         "Income this period",
+    expenses_went_out:     "Expenses",
+    expenses_period:       "Expenses this period",
+    income:                "Income",
+    expenses_label:        "Expenses",
+    earned_returns:        "💰 Interest earned",
+    no_income:             "No income",
+    no_expenses:           "No expenses",
+    starts_next_month:     "Starts next month",
+    n_of_n_paid:           (a, b) => `${a} of ${b} paid`,
+    n_of_n_installments:   (a, b) => `${a} of ${b} installments`,
+    estimated_installment: "estimated installment",
+    this_month_installment:"this month's installment",
+    pending_amount:        a => `+${a} pending`,
+    debt_paid:             "🎉 Debt fully paid!",
+    remaining_balance:     a => `Remaining balance: ${a}`,
+    no_results:            "No results for this filter",
+    n_selected:            n => `${n} transaction${n !== 1 ? "s" : ""} selected`,
+    change_category:       "Change category",
+    cancel:                "Cancel",
+    save:                  "Save",
+    add_cat_to_n:          n => `Add category to ${n} transactions (merged with existing)`,
+    pdf_protected:         "Protected PDF",
+    pdf_password_sub:      "Enter the password to<br>unlock and read the statement",
+    pdf_password_placeholder:"PDF password",
+    open_pdf:              "Open PDF",
+    wrong_password:        "Incorrect password, please try again",
+    upload_title:          "Upload statement",
+    upload_h2:             "Upload your statement",
+    upload_p:              "Drag the PDF here or click to browse",
+    select_pdf:            "Select PDF",
+    pdf_error:             "Could not process the PDF. Please verify the file is valid.",
+    feat_extract:          "🧾 Automatic extraction",
+    feat_cats:             "🏷️ Smart categories",
+    feat_debt:             "💳 Debt & installments",
+    feat_csv:              "📤 Export CSV",
+    new_pdf:               "New PDF",
+    create_category:       "Create new category",
+    category_icon:         "Icon",
+    category_color:        "Color",
+    category_name_placeholder:"Category name",
+    create:                "Create",
+    delete_cat_confirm:    n => `Delete category "${n}"? Transactions will be moved to "Others".`,
+    account_credit:        "Credit Card",
+    account_debit:         "Savings / Debit Account",
+    confirm_delete:        "Delete",
+  },
+};
+
+let currentLang = localStorage.getItem("drafiti_lang") || "es";
+
+function t(key, ...args) {
+  const val = (LANGS[currentLang] ?? LANGS.es)[key] ?? LANGS.es[key] ?? key;
+  return typeof val === "function" ? val(...args) : val;
+}
+
+function setLang(lang) {
+  currentLang = lang;
+  localStorage.setItem("drafiti_lang", lang);
+  document.querySelectorAll(".lang-btn").forEach(el =>
+    el.classList.toggle("active", el.dataset.lang === lang));
+  document.documentElement.lang = lang;
+  updateStaticStrings();
+  const resultsHidden = document.getElementById("results").classList.contains("hidden");
+  const docsVisible   = !document.getElementById("documents-section").classList.contains("hidden");
+  if (!resultsHidden) renderResults();
+  else if (docsVisible) renderDocuments();
+}
+
+function updateStaticStrings() {
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-html]").forEach(el => {
+    el.innerHTML = t(el.dataset.i18nHtml);
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach(el => {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
+  });
+}
+
 const COLOR_PALETTE = [
   { bg: "#FEE2E2", text: "#DC2626" },
   { bg: "#FEF3C7", text: "#D97706" },
@@ -191,9 +421,9 @@ function renderDocuments() {
       <div class="docs-page">
         <div class="docs-empty">
           <div class="docs-empty-icon">📄</div>
-          <h3 class="docs-empty-title">Sin extractos aún</h3>
-          <p class="docs-empty-sub">Sube tu primer extracto bancario para comenzar a ver tus gastos</p>
-          <button class="btn-primary" onclick="openUploadModal()">Subir primer extracto</button>
+          <h3 class="docs-empty-title">${t("no_statements")}</h3>
+          <p class="docs-empty-sub">${t("no_statements_sub")}</p>
+          <button class="btn-primary" onclick="openUploadModal()">${t("upload_first")}</button>
         </div>
       </div>`;
     return;
@@ -203,21 +433,22 @@ function renderDocuments() {
     <div class="docs-page">
       <div class="docs-page-header">
         <div>
-          <h2 class="docs-title">Mis extractos</h2>
-          <p class="docs-sub">${history.length} guardado${history.length !== 1 ? "s" : ""}</p>
+          <h2 class="docs-title">${t("my_statements")}</h2>
+          <p class="docs-sub">${t("n_saved", history.length)}</p>
         </div>
         <button class="btn-primary docs-upload-btn" onclick="openUploadModal()">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M7 10V3M4 6l3-3 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M2 12h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
           </svg>
-          Subir extracto
+          ${t("upload_statement")}
         </button>
       </div>
       <div class="history-grid">
         ${history.map(h => {
           const hType = h.summary?.statement_type || "credito";
-          const hMeta = ACCOUNT_TYPE_META[hType] || ACCOUNT_TYPE_META.credito;
+          const _meta = getAccountTypeMeta();
+          const hMeta = _meta[hType] || _meta.credito;
           return `
           <div class="history-card" onclick="loadFromHistory('${escapeAttr(h.id)}')">
             <div class="history-icon">${hMeta.icon}</div>
@@ -326,7 +557,7 @@ async function uploadFile(file, password = null) {
         pendingFile = file;
         show(uploadOrigin);
         if (password) {
-          openPwdModal("Contraseña incorrecta, intenta de nuevo");
+          openPwdModal(t("wrong_password"));
         } else {
           openPwdModal();
         }
@@ -334,7 +565,7 @@ async function uploadFile(file, password = null) {
       }
       const msg = typeof err.detail === "string"
         ? err.detail
-        : "No se pudo procesar el PDF. Verifica que el archivo sea válido.";
+        : t("pdf_error");
       throw new Error(msg);
     }
     const data = await res.json();
@@ -410,9 +641,12 @@ function setTab(tab) {
 function renderResults() {
   show("results");
   // Update "Deuda" tab label depending on statement type
-  const deudaTab = document.querySelector(".nav-tab[data-tab='deuda']");
-  if (deudaTab) deudaTab.childNodes[deudaTab.childNodes.length - 1].textContent =
-    statementType === "debito" ? " Cuenta" : " Deuda";
+  const deudaTab = document.querySelector(".nav-tab[data-tab='deuda'] span[data-i18n]");
+  if (deudaTab) {
+    const key = statementType === "debito" ? "tab_cuenta" : "tab_deuda";
+    deudaTab.dataset.i18n = key;
+    deudaTab.textContent = t(key);
+  }
   setTab(activeTab);
   renderHero();
   renderDebt();
@@ -426,16 +660,19 @@ function chargedAmount(t) {
   return (t.cargos_mes != null) ? t.cargos_mes : t.amount;
 }
 
-const ACCOUNT_TYPE_META = {
-  credito: { label: "Tarjeta de Crédito", icon: "💳", color: "#5C6BC0" },
-  debito:  { label: "Cuenta de Ahorros / Débito", icon: "🏦", color: "#059669" },
-};
+function getAccountTypeMeta() {
+  return {
+    credito: { label: t("account_credit"), icon: "💳", color: "#5C6BC0" },
+    debito:  { label: t("account_debit"),  icon: "🏦", color: "#059669" },
+  };
+}
 
 // ── Hero (gasto) ──────────────────────────────────────────────────────────────
 function renderHero() {
-  document.getElementById("txn-count").textContent = `${allTxns.length} movimientos`;
+  document.getElementById("txn-count").textContent = t("movements", allTxns.length);
 
-  const meta = ACCOUNT_TYPE_META[statementType] || ACCOUNT_TYPE_META.credito;
+  const _ameta = getAccountTypeMeta();
+  const meta = _ameta[statementType] || _ameta.credito;
   const badge = document.getElementById("account-type-badge");
   if (badge) {
     badge.textContent = `${meta.icon} ${meta.label}`;
@@ -448,16 +685,14 @@ function renderHero() {
     const income   = allTxns.filter(t => t.amount > 0);
     const total    = expenses.reduce((s, t) => s + Math.abs(t.amount), 0);
     document.getElementById("hero-amount").textContent = formatCOP(total);
-    document.getElementById("hero-label").textContent  = "Gastos este período";
-    document.getElementById("hero-sub").textContent    =
-      `${expenses.length} gastos · ${income.length} ingresos`;
+    document.getElementById("hero-label").textContent  = t("label_expenses");
+    document.getElementById("hero-sub").textContent    = t("expenses_income", expenses.length, income.length);
   } else {
     const pos   = allTxns.filter(t => t.amount > 0);
     const total = pos.reduce((s, t) => s + chargedAmount(t), 0);
     document.getElementById("hero-amount").textContent = formatCOP(total);
-    document.getElementById("hero-label").textContent  = "Cobrado este período";
-    document.getElementById("hero-sub").textContent    =
-      `${pos.length} transacciones · ${allTxns.filter(t => t.amount < 0).length} créditos`;
+    document.getElementById("hero-label").textContent  = t("label_charged");
+    document.getElementById("hero-sub").textContent    = t("txns_credits", pos.length, allTxns.filter(t => t.amount < 0).length);
   }
 }
 
@@ -482,13 +717,13 @@ function renderDebt() {
   const difActivo = activeInstallments.reduce((s, t) => s + (t.saldo_dif || 0), 0);
 
   document.getElementById("ds-saldo").textContent  = formatCOP(saldoTotal);
-  document.getElementById("ds-vence").textContent  = fechaLimite ? `Vence ${fechaLimite}` : "";
+  document.getElementById("ds-vence").textContent  = fechaLimite ? `${t("expires")} ${fechaLimite}` : "";
   document.getElementById("ds-minimo").textContent = formatCOP(minimo);
   document.getElementById("ds-pagado").textContent = pagado > 0 ? formatCOP(pagado) : "—";
   document.getElementById("ds-cuotas").textContent = formatCOP(difActivo);
   document.getElementById("ds-cuotas-sub").textContent = activeInstallments.length > 0
-    ? `${activeInstallments.length} plan${activeInstallments.length !== 1 ? "es" : ""} en curso`
-    : "Sin cuotas activas";
+    ? t("n_active_plans", activeInstallments.length)
+    : t("no_active_installments");
 
   const owedTxns = allTxns
     .filter(t => t.amount > 0 && chargedAmount(t) > 0)
@@ -506,7 +741,7 @@ function renderDebt() {
           <div class="ds-detail-val">${formatCOP(chargedAmount(t))}</div>
         </div>`;
       }).join("")
-    : `<div class="ds-empty">Sin cargos</div>`;
+    : `<div class="ds-empty">${t("no_charges")}</div>`;
 
   const paidTxns = allTxns
     .filter(t => t.amount < 0)
@@ -519,30 +754,30 @@ function renderDebt() {
         </div>
         <div class="ds-detail-val green">+${formatCOP(Math.abs(t.amount))}</div>
       </div>`).join("")
-    : `<div class="ds-empty">Sin pagos registrados</div>`;
+    : `<div class="ds-empty">${t("no_payments")}</div>`;
 
   document.getElementById("ds-detail-installments").innerHTML = activeInstallments.length
-    ? activeInstallments.map(t => {
-        const act = t.cuota_act || 0;
-        const tot = t.cuota_tot;
+    ? activeInstallments.map(inst => {
+        const act = inst.cuota_act || 0;
+        const tot = inst.cuota_tot;
         const pct = Math.round(act / tot * 100);
         return `<div class="ds-detail-row ds-inst-row">
           <div class="ds-detail-left">
-            <div class="ds-detail-desc">${escapeHTML(t.description)}</div>
+            <div class="ds-detail-desc">${escapeHTML(inst.description)}</div>
             <div class="ds-inst-progress">
               <div class="ds-inst-track">
                 <div class="ds-inst-fill" style="width:${pct}%"></div>
               </div>
-              <span>${act} de ${tot} cuotas</span>
+              <span>${t("n_of_n_installments", act, tot)}</span>
             </div>
           </div>
           <div class="ds-detail-right">
-            <div class="ds-detail-val">${formatCOP(t.cargos_mes || 0)}<span class="ds-per-mes">/mes</span></div>
-            ${(t.saldo_dif || 0) > 0 ? `<div class="ds-dif-val">${formatCOP(t.saldo_dif)} pendiente</div>` : ""}
+            <div class="ds-detail-val">${formatCOP(inst.cargos_mes || 0)}<span class="ds-per-mes">/mes</span></div>
+            ${(inst.saldo_dif || 0) > 0 ? `<div class="ds-dif-val">${formatCOP(inst.saldo_dif)} ${t("pending")}</div>` : ""}
           </div>
         </div>`;
       }).join("")
-    : `<div class="ds-empty">Sin cuotas activas</div>`;
+    : `<div class="ds-empty">${t("no_active_installments")}</div>`;
 
   document.getElementById("debt-cargos").textContent   = formatCOP(cargosTotal);
   document.getElementById("debt-diferido").textContent = formatCOP(difTotal);
@@ -577,7 +812,7 @@ function renderDebitAccount() {
         </div>
         <div class="ds-detail-val green">+${formatCOP(t.amount)}</div>
       </div>`).join("")
-    : `<div class="ds-empty">Sin ingresos</div>`;
+    : `<div class="ds-empty">${t("no_income")}</div>`;
 
   document.getElementById("da-detail-expense").innerHTML = expenseTxns.length
     ? expenseTxns.map(t => `<div class="ds-detail-row">
@@ -587,7 +822,7 @@ function renderDebitAccount() {
         </div>
         <div class="ds-detail-val">${formatCOP(Math.abs(t.amount))}</div>
       </div>`).join("")
-    : `<div class="ds-empty">Sin gastos</div>`;
+    : `<div class="ds-empty">${t("no_expenses")}</div>`;
 
   // Bar proportions
   const total = (entradas + salidas) || 1;
@@ -613,8 +848,8 @@ function renderSimulator() {
   if (pago <= 0 || saldo <= 0) { result.classList.add("hidden"); return; }
   const restante = Math.max(0, saldo - pago);
   result.textContent = restante === 0
-    ? "🎉 ¡Deuda saldada!"
-    : `Saldo restante: ${formatCOP(restante)}`;
+    ? t("debt_paid")
+    : t("remaining_balance", formatCOP(restante));
   result.classList.remove("hidden");
 }
 
@@ -630,29 +865,29 @@ function renderCuotas() {
 
   const totalDif = installments.reduce((s, t) => s + (t.saldo_dif || 0), 0);
   document.getElementById("cuotas-toggle-label").textContent =
-    `${installments.length} planes activos · ${formatCOP(totalDif)} pendiente`;
+    t("plans_pending", installments.length, formatCOP(totalDif));
 
-  document.getElementById("cuotas-list").innerHTML = installments.map(t => {
-    const act       = t.cuota_act ?? 0;
-    const tot       = t.cuota_tot;
+  document.getElementById("cuotas-list").innerHTML = installments.map(inst => {
+    const act       = inst.cuota_act ?? 0;
+    const tot       = inst.cuota_tot;
     const isPending = act === 0;
     const pct       = isPending ? 0 : Math.round(act / tot * 100);
-    const cargos    = t.cargos_mes || 0;
-    const dif       = t.saldo_dif  || 0;
+    const cargos    = inst.cargos_mes || 0;
+    const dif       = inst.saldo_dif  || 0;
     const tag = isPending
-      ? `<span class="cuota-tag-pending">Inicia próximo mes</span>`
-      : `<span style="font-size:11px;color:var(--muted)">${act} de ${tot} pagadas</span>`;
+      ? `<span class="cuota-tag-pending">${t("starts_next_month")}</span>`
+      : `<span style="font-size:11px;color:var(--muted)">${t("n_of_n_paid", act, tot)}</span>`;
 
     return `<div class="cuota-row">
       <div>
-        <div class="cuota-desc">${escapeHTML(t.description)}</div>
-        <div class="cuota-meta">${tag} · ${t.date}</div>
+        <div class="cuota-desc">${escapeHTML(inst.description)}</div>
+        <div class="cuota-meta">${tag} · ${inst.date}</div>
         <div class="cuota-track"><div class="cuota-fill" style="width:${pct}%"></div></div>
       </div>
       <div class="cuota-right">
-        <div class="cuota-mes">${isPending ? "cuota estimada" : "cuota este mes"}</div>
+        <div class="cuota-mes">${isPending ? t("estimated_installment") : t("this_month_installment")}</div>
         <div class="cuota-val">${formatCOP(cargos)}</div>
-        ${dif > 0 ? `<div class="cuota-dif">+${formatCOP(dif)} pendiente</div>` : ""}
+        ${dif > 0 ? `<div class="cuota-dif">${t("pending_amount", formatCOP(dif))}</div>` : ""}
       </div>
     </div>`;
   }).join("");
@@ -708,23 +943,23 @@ function renderCatGrid() {
         <div class="cat-icon">${cat.icon}</div>
         <div class="cat-name">${escapeHTML(cat.name)}</div>
         <div class="cat-amount" style="color:${safeColor(cat.text)}">${formatCOP(d.sum)}</div>
-        <div class="cat-count">${d.count} mov.</div>
+        <div class="cat-count">${t("n_movements", d.count)}</div>
         <div class="cat-bar">
           <div class="cat-bar-fill" style="width:${pct}%;background:${safeColor(cat.text)}"></div>
         </div>
-        <div class="cat-pct">${pct}% del total</div>
+        <div class="cat-pct">${t("pct_total", pct)}</div>
       </div>`;
   }).join("") + `
     <div class="cat-card add-card" onclick="openNewCatForm()">
       <span style="font-size:22px">＋</span>
-      <span>Nueva categoría</span>
+      <span>${t("new_category")}</span>
     </div>`;
 }
 
 function removeCat(e, name) {
   e.stopPropagation();
   showConfirm(
-    `¿Eliminar la categoría "${name}"? Las transacciones quedarán en "Otros".`,
+    t("delete_cat_confirm", name),
     () => {
       deleteCustomCategory(name);
       if (activeFilter === name) activeFilter = "Todos";
@@ -757,7 +992,7 @@ function renderFilters() {
     if (name === "Todos") {
       return `<button class="chip ${active ? "active" : ""}"
         style="background:${active ? "#111827" : "var(--surface)"};color:${active ? "#fff" : "var(--muted)"}"
-        onclick="setFilter('Todos')">Todos</button>`;
+        onclick="setFilter('Todos')">${t("filter_all")}</button>`;
     }
     const cat = getCat(name);
     return `<button class="chip ${active ? "active" : ""}"
@@ -810,8 +1045,7 @@ function updateBulkBar() {
     bar.classList.add("hidden");
   } else {
     bar.classList.remove("hidden");
-    document.getElementById("bulk-count").textContent =
-      `${n} transacción${n !== 1 ? "es" : ""} seleccionada${n !== 1 ? "s" : ""}`;
+    document.getElementById("bulk-count").textContent = t("n_selected", n);
   }
   const allBox = document.getElementById("check-all");
   if (allBox) allBox.checked = n > 0 && n >= allTxns.length;
@@ -821,8 +1055,7 @@ function openBulkModal() {
   isBulkMode = true;
   editingIdx  = null;
   pendingCats = [];
-  document.getElementById("modal-desc").textContent =
-    `Agregar categoría a ${selectedTxns.size} transacciones (se suma a las existentes)`;
+  document.getElementById("modal-desc").textContent = t("add_cat_to_n", selectedTxns.size);
   renderModalCats();
   document.getElementById("modal").classList.remove("hidden");
 }
@@ -906,8 +1139,8 @@ function renderModalCats() {
       </button>`;
     }).join("") +
     `<div class="modal-actions" style="grid-column:1/-1">
-      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
-      <button class="btn-confirm" onclick="saveModal()">Guardar</button>
+      <button class="btn-cancel" onclick="closeModal()">${t("cancel")}</button>
+      <button class="btn-confirm" onclick="saveModal()">${t("save")}</button>
     </div>`;
 }
 
@@ -959,26 +1192,26 @@ function closeModal(e) {
 function openNewCatForm() {
   editingIdx  = null;
   pendingCats = [];
-  document.getElementById("modal-desc").textContent = "Crear nueva categoría";
+  document.getElementById("modal-desc").textContent = t("create_category");
   document.getElementById("modal-cats").innerHTML =
     `<div class="new-cat-block" style="grid-column:1/-1">
-      <div class="new-cat-sub">Icono</div>
+      <div class="new-cat-sub">${t("category_icon")}</div>
       <div class="emoji-picker">
         ${EMOJI_OPTIONS.map(e => `<button class="emoji-btn ${e === selectedEmoji ? "selected" : ""}" onclick="pickEmoji('${e}')">${e}</button>`).join("")}
       </div>
-      <div class="new-cat-sub" style="margin-top:10px">Color</div>
+      <div class="new-cat-sub" style="margin-top:10px">${t("category_color")}</div>
       <div class="color-dots" id="color-dots">
         ${COLOR_PALETTE.map((c, i) => `
           <div class="color-dot ${i === selectedColorIdx ? "selected" : ""}"
             style="background:${c.text}" onclick="pickColorGrid(${i})"></div>`).join("")}
       </div>
       <div class="new-cat-form" style="margin-top:10px">
-        <input class="new-cat-name" id="new-name" type="text" placeholder="Nombre de categoría" />
-        <button class="btn-add-cat" onclick="addCatFromGrid()">Crear</button>
+        <input class="new-cat-name" id="new-name" type="text" placeholder="${t("category_name_placeholder")}" />
+        <button class="btn-add-cat" onclick="addCatFromGrid()">${t("create")}</button>
       </div>
     </div>
     <div class="modal-actions" style="grid-column:1/-1">
-      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-cancel" onclick="closeModal()">${t("cancel")}</button>
     </div>`;
   document.getElementById("modal").classList.remove("hidden");
 }
@@ -1120,6 +1353,10 @@ async function init() {
   historyCache      = historyData;
 
   show("documents-section");
+  updateStaticStrings();
+  document.querySelectorAll(".lang-btn").forEach(el =>
+    el.classList.toggle("active", el.dataset.lang === currentLang));
+  document.documentElement.lang = currentLang;
 }
 
 init();
